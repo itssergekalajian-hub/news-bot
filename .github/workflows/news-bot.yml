@@ -1,0 +1,49 @@
+name: News Bot Run
+
+on:
+  schedule:
+    # Every 30 minutes. GitHub's scheduler is best-effort, not exact -
+    # actual runs can lag a few minutes behind this during high load
+    # periods. That's normal.
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+
+# Prevent overlapping runs if one takes longer than 5 minutes
+concurrency:
+  group: news-bot-run
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed so the workflow can commit the updated dedup DB back to the repo
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run news bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python main.py
+
+      - name: Commit updated dedup database
+        run: |
+          git config user.name "news-bot"
+          git config user.email "news-bot@users.noreply.github.com"
+          git add posted_stories.db
+          git diff --cached --quiet && echo "No DB changes to commit" || git commit -m "Update dedup DB [skip ci]"
+          git push
