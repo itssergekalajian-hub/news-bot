@@ -3,11 +3,10 @@ Turns a cluster of headlines/posts into a short, neutral, fact-first
 Telegram post - now using Google Gemini instead of Claude, so the whole
 pipeline runs on Google's free tier with no Anthropic API dependency.
 
-Uses Gemini 2.5 Flash (not Flash-Lite) for this step specifically - actual
-post-writing benefits from a stronger model than the binary classification
-in filter.py does, and this call runs far less often (only for stories
-that already passed confirmation + relevance), so Flash's lower free-tier
-daily quota (~250/day) is still comfortably enough.
+Uses Gemini 3.5 Flash-Lite - switched from Gemini 2.5 Flash after discovering
+via the account's actual quota page that 2.5 Flash only has a 20 requests/day
+free-tier cap on this account, while 3.5 Flash-Lite has 500/day - the model
+version choice was the bottleneck, not the account itself.
 """
 import os
 import time
@@ -19,7 +18,7 @@ logger = logging.getLogger("news_bot.summarize")
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.5-flash:generateContent"
+    "gemini-3.5-flash-lite:generateContent"
 )
 
 MAX_RETRIES = 3
