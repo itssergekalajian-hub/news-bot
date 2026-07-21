@@ -37,6 +37,7 @@ GEMINI_URL = (
 PACING_DELAY_SECONDS = 7
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SECONDS = 10
+BATCH_SIZE = 8
 
 TOPIC_PROMPT = """You are a topic classifier for a news channel with a specific, \
 narrow focus. The channel ONLY wants:
@@ -121,29 +122,73 @@ def _call_gemini(payload):
 
 def is_relevant(cluster):
     """
+    Single-cluster classification - kept for compatibility, but
+    classify_batch() below is what main.py actually uses now, since it
+    cuts the number of API calls per run by roughly 8x. This function
+    still works the same way if ever needed directly.
+
     Returns True/False for a genuine classification, or None if the check
     could not be completed (API failure after retries) - the caller must
-    NOT cache a None result as a verdict, since that would permanently
-    treat "the API failed this one time" as "this story is irrelevant
-    forever," which silently poisons the evaluation cache.
+    NOT cache a None result as a verdict.
     """
-    lines = [f"- [{m['source']}] {m['title']}" for m in cluster["members"]]
-    user_content = "Headlines:\n" + "\n".join(lines)
+    result = classify_batch([cluster])
+    return result.get(cluster["cluster_key"])
+
+
+def classify_batch(clusters):
+    """
+    Classifies multiple clusters in a single API call. This is the real
+    fix for persistent rate-limit errors: with 100+ clusters needing
+    classification on a busy run, one call per cluster reliably exceeds
+    the free tier's rate limit no matter how much the calls are spaced
+    out - batching cuts a 100-call run down to roughly 12-15 calls.
+
+    Returns {cluster_key: bool} - a cluster is simply OMITTED from the
+    result if the batch call fails, so the caller can tell "genuinely
+    judged" apart from "couldn't check" and avoid caching a false verdict.
+    """
+    if not clusters:
+        return {}
+
+    numbered_lines = []
+    for i, c in enumerate(clusters, start=1):
+        headlines = "; ".join(f"[{m['source']}] {m['title']}" for m in c["members"][:3])
+        numbered_lines.append(f"{i}. {headlines}")
+
+    user_content = (
+        "For each numbered story below, decide if it matches the channel's topics.\n\n"
+        + "\n".join(numbered_lines)
+        + "\n\nRespond with EXACTLY one line per number, format 'N:YES' or 'N:NO' "
+          "(e.g. '1:YES'), nothing else - no explanations, no blank lines, no extra text."
+    )
 
     payload = {
         "systemInstruction": {"parts": [{"text": TOPIC_PROMPT}]},
         "contents": [{"parts": [{"text": user_content}]}],
-        "generationConfig": {"maxOutputTokens": 5, "temperature": 0},
+        "generationConfig": {"maxOutputTokens": 30 * len(clusters), "temperature": 0},
     }
 
     try:
         data = _call_gemini(payload)
-        text = data["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
-        return text.startswith("YES")
+        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
-        logger.warning("Relevance check failed for '%s': %s - will retry next run", cluster["title"][:60], e)
-        return None
+        logger.warning("Batch relevance check failed for %d clusters: %s - will retry next run", len(clusters), e)
+        return {}
     finally:
-        # Pace calls to stay under the free-tier RPM limit, regardless of
-        # whether this call succeeded or failed.
+        # Pace batches to stay under the free-tier RPM limit.
         time.sleep(PACING_DELAY_SECONDS)
+
+    results = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        num_str, verdict = line.split(":", 1)
+        try:
+            idx = int(num_str.strip()) - 1
+        except ValueError:
+            continue
+        if 0 <= idx < len(clusters):
+            results[clusters[idx]["cluster_key"]] = verdict.strip().upper().startswith("YES")
+
+    return results
