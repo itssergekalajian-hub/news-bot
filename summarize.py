@@ -10,6 +10,7 @@ that already passed confirmation + relevance), so Flash's lower free-tier
 daily quota (~250/day) is still comfortably enough.
 """
 import os
+import time
 import logging
 import requests
 
@@ -20,6 +21,9 @@ GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.5-flash:generateContent"
 )
+
+MAX_RETRIES = 3
+RETRY_BASE_DELAY_SECONDS = 6
 
 SYSTEM_PROMPT = """You are writing for a fast-moving, well-read Telegram news channel called \
 MidWorld News. You will be given several headlines/posts and source names that a matching \
@@ -76,6 +80,34 @@ REFUSAL_MARKERS = [
 ]
 
 
+def _call_gemini(payload):
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(
+                GEMINI_URL,
+                params={"key": GOOGLE_API_KEY},
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            status = e.response.status_code if e.response is not None else None
+            if status in (404, 429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                continue
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                continue
+            raise
+    raise last_error
+
+
 def summarize_cluster(cluster):
     lines = []
     for m in cluster["members"]:
@@ -89,14 +121,7 @@ def summarize_cluster(cluster):
     }
 
     try:
-        resp = requests.post(
-            GEMINI_URL,
-            params={"key": GOOGLE_API_KEY},
-            json=payload,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _call_gemini(payload)
         result = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
         logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
