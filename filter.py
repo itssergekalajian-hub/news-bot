@@ -34,9 +34,9 @@ GEMINI_URL = (
 # limit; retries below handle transient errors (429s, and occasional 404s
 # that appear to be backend routing hiccups rather than a real wrong model
 # name, since retrying the identical request often succeeds).
-PACING_DELAY_SECONDS = 4.5
+PACING_DELAY_SECONDS = 7
 MAX_RETRIES = 3
-RETRY_BASE_DELAY_SECONDS = 6
+RETRY_BASE_DELAY_SECONDS = 10
 
 TOPIC_PROMPT = """You are a topic classifier for a news channel with a specific, \
 narrow focus. The channel ONLY wants:
@@ -119,7 +119,14 @@ def _call_gemini(payload):
     raise last_error
 
 
-def is_relevant(cluster) -> bool:
+def is_relevant(cluster):
+    """
+    Returns True/False for a genuine classification, or None if the check
+    could not be completed (API failure after retries) - the caller must
+    NOT cache a None result as a verdict, since that would permanently
+    treat "the API failed this one time" as "this story is irrelevant
+    forever," which silently poisons the evaluation cache.
+    """
     lines = [f"- [{m['source']}] {m['title']}" for m in cluster["members"]]
     user_content = "Headlines:\n" + "\n".join(lines)
 
@@ -134,8 +141,8 @@ def is_relevant(cluster) -> bool:
         text = data["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
         return text.startswith("YES")
     except Exception as e:
-        logger.warning("Relevance check failed for '%s': %s - defaulting to skip", cluster["title"][:60], e)
-        return False
+        logger.warning("Relevance check failed for '%s': %s - will retry next run", cluster["title"][:60], e)
+        return None
     finally:
         # Pace calls to stay under the free-tier RPM limit, regardless of
         # whether this call succeeded or failed.
