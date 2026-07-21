@@ -24,7 +24,7 @@ from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEA
 from storage import Storage
 from fetcher import fetch_all_entries
 from cluster import cluster_entries, is_confirmed
-from filter import is_relevant
+from filter import classify_batch, BATCH_SIZE
 from summarize import summarize_cluster
 from telegram_post import post_to_channel
 from sports_scores import fetch_upcoming_fixtures, fetch_recent_results
@@ -74,13 +74,17 @@ def run_once(store: Storage):
 
     recent_posted_titles = store.get_recent_posted_titles(NEAR_DUP_LOOKBACK_HOURS)
 
-    posted_this_run = 0
+    # --- Pass 1: figure out which clusters need a fresh classification
+    # call, and which are already known to be posted, off-topic, or
+    # duplicates - all without touching the API. ---
+    needs_classification = []
+    ready_to_post = []
+
     for c in clusters:
         if not is_confirmed(c):
             continue
         if store.is_posted(c["cluster_key"]):
             continue
-
         if _is_near_duplicate(c["title"], recent_posted_titles):
             logger.info("Skipped (near-duplicate of recent post): %s", c["title"][:80])
             continue
@@ -88,20 +92,35 @@ def run_once(store: Storage):
         already_evaluated = store.is_evaluated(c["cluster_key"])
         if already_evaluated is False:
             continue  # previously judged off-topic, don't re-check or re-post
-        if already_evaluated is None:
-            relevant = is_relevant(c)
-            if relevant is None:
-                # Classifier couldn't complete (API failure) - do NOT cache
-                # this as a verdict, or it would permanently treat "the API
-                # failed once" as "this story is irrelevant forever." Just
-                # skip this story for this run; it'll be retried next run.
+        if already_evaluated is True:
+            ready_to_post.append(c)  # already known relevant from a prior run
+        else:
+            needs_classification.append(c)
+
+    # --- Pass 2: batch-classify everything that needs it, a handful of
+    # clusters per API call instead of one call each - this is what keeps
+    # a run with 100+ candidate clusters to roughly 12-15 API calls total
+    # instead of 100+, which is what actually respects the free-tier rate
+    # limit regardless of how much any single call is paced. ---
+    for i in range(0, len(needs_classification), BATCH_SIZE):
+        batch = needs_classification[i:i + BATCH_SIZE]
+        results = classify_batch(batch)
+        for c in batch:
+            verdict = results.get(c["cluster_key"])
+            if verdict is None:
+                # Batch call failed - do NOT cache anything, just retry
+                # next run. Never treat "couldn't check" as "irrelevant."
                 logger.info("Skipped (classifier unavailable, will retry): %s", c["title"][:80])
                 continue
-            store.mark_evaluated(c["cluster_key"], relevant)
-            if not relevant:
+            store.mark_evaluated(c["cluster_key"], verdict)
+            if verdict:
+                ready_to_post.append(c)
+            else:
                 logger.info("Skipped (off-topic): %s", c["title"][:80])
-                continue
 
+    # --- Pass 3: summarize and post everything that made it through. ---
+    posted_this_run = 0
+    for c in ready_to_post:
         try:
             summary = summarize_cluster(c)
             if summary is None:
