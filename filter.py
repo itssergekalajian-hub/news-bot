@@ -14,6 +14,7 @@ the story (relevant=False) on any failure, same as before - a classifier
 outage should never crash the run or cause an unclassified story to post.
 """
 import os
+import time
 import logging
 import requests
 
@@ -24,6 +25,18 @@ GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "gemini-2.5-flash-lite:generateContent"
 )
+
+# Free-tier Flash-Lite is roughly 10-15 requests/minute. A run with many
+# confirmed clusters (common once several auto-confirming wire sources are
+# in play) can easily need 30-100+ classification calls - firing them back
+# to back with no pacing guarantees hitting the rate limit almost
+# immediately. This delay keeps steady-state throughput safely under the
+# limit; retries below handle transient errors (429s, and occasional 404s
+# that appear to be backend routing hiccups rather than a real wrong model
+# name, since retrying the identical request often succeeds).
+PACING_DELAY_SECONDS = 4.5
+MAX_RETRIES = 3
+RETRY_BASE_DELAY_SECONDS = 6
 
 TOPIC_PROMPT = """You are a topic classifier for a news channel with a specific, \
 narrow focus. The channel ONLY wants:
@@ -75,6 +88,37 @@ No explanation, no punctuation, just YES or NO.
 """
 
 
+def _call_gemini(payload):
+    """POSTs to Gemini with retry-with-backoff for transient errors
+    (429 rate-limited, 404s that resolve on retry, 5xx). Raises on final
+    failure so the caller's own try/except can log and default to skip."""
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(
+                GEMINI_URL,
+                params={"key": GOOGLE_API_KEY},
+                json=payload,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            status = e.response.status_code if e.response is not None else None
+            if status in (404, 429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                continue
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                continue
+            raise
+    raise last_error
+
+
 def is_relevant(cluster) -> bool:
     lines = [f"- [{m['source']}] {m['title']}" for m in cluster["members"]]
     user_content = "Headlines:\n" + "\n".join(lines)
@@ -86,16 +130,13 @@ def is_relevant(cluster) -> bool:
     }
 
     try:
-        resp = requests.post(
-            GEMINI_URL,
-            params={"key": GOOGLE_API_KEY},
-            json=payload,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _call_gemini(payload)
         text = data["candidates"][0]["content"]["parts"][0]["text"].strip().upper()
         return text.startswith("YES")
     except Exception as e:
         logger.warning("Relevance check failed for '%s': %s - defaulting to skip", cluster["title"][:60], e)
         return False
+    finally:
+        # Pace calls to stay under the free-tier RPM limit, regardless of
+        # whether this call succeeded or failed.
+        time.sleep(PACING_DELAY_SECONDS)
