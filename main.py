@@ -90,6 +90,13 @@ def run_once(store: Storage):
             continue  # previously judged off-topic, don't re-check or re-post
         if already_evaluated is None:
             relevant = is_relevant(c)
+            if relevant is None:
+                # Classifier couldn't complete (API failure) - do NOT cache
+                # this as a verdict, or it would permanently treat "the API
+                # failed once" as "this story is irrelevant forever." Just
+                # skip this story for this run; it'll be retried next run.
+                logger.info("Skipped (classifier unavailable, will retry): %s", c["title"][:80])
+                continue
             store.mark_evaluated(c["cluster_key"], relevant)
             if not relevant:
                 logger.info("Skipped (off-topic): %s", c["title"][:80])
