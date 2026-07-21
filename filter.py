@@ -23,7 +23,7 @@ logger = logging.getLogger("news_bot.filter")
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.5-flash-lite:generateContent"
+    "gemini-3.5-flash-lite:generateContent"
 )
 
 # Free-tier Flash-Lite is roughly 10-15 requests/minute. A run with many
@@ -34,10 +34,51 @@ GEMINI_URL = (
 # limit; retries below handle transient errors (429s, and occasional 404s
 # that appear to be backend routing hiccups rather than a real wrong model
 # name, since retrying the identical request often succeeds).
-PACING_DELAY_SECONDS = 7
+PACING_DELAY_SECONDS = 8
 MAX_RETRIES = 3
-RETRY_BASE_DELAY_SECONDS = 10
-BATCH_SIZE = 8
+RETRY_BASE_DELAY_SECONDS = 12
+BATCH_SIZE = 40
+
+# Free, local, zero-API-cost keyword pre-filter. Given how restrictive some
+# accounts' free-tier daily quota can be (as low as 20 requests/day on some
+# projects, far below the ~1,000-1,500/day sometimes advertised), this cuts
+# the obviously-irrelevant bulk (routine domestic stories, transfer gossip,
+# celebrity news, etc.) before ever spending an API call. Deliberately
+# generous/broad - the goal is to catch clear non-matches cheaply, not to
+# replace the LLM's nuanced judgment, so it's fine (expected, even) for
+# borderline-relevant stories to pass through to the real classifier.
+KEYWORDS = [
+    # Middle East / Iran / Israel / Lebanon
+    "iran", "israel", "gaza", "lebanon", "hezbollah", "hamas", "irgc",
+    "syria", "houthi", "yemen", "idf", "tehran", "beirut", "gulf",
+    "hormuz", "qeshm", "bahrain", "kuwait", "jordan", "iraq", "saudi",
+    "uae", "netanyahu", "khamenei", "middle east",
+    # Russia-Ukraine
+    "russia", "ukraine", "kremlin", "putin", "zelensky", "moscow",
+    "kyiv", "donbas", "crimea",
+    # Major geopolitics / Europe / USA
+    "election", "president", "prime minister", "parliament", "congress",
+    "senate", "white house", "nato", "eu ", "european union", "war",
+    "attack", "strike", "assassinat", "military", "troops", "sanctions",
+    "trump", "biden",
+    # Finance/markets
+    "stock", "index", "s&p", "dow", "nasdaq", "fed ", "federal reserve",
+    "inflation", "gdp", "jobs report", "oil price", "gold price",
+    "silver", "bitcoin", "crypto", "btc", "eth ", "rate cut", "rate hike",
+    "tariff", "market", "recession",
+    # Sports (major only - filter.py's LLM check still applies the "major"
+    # bar, this just decides whether to bother asking at all)
+    "world cup", "champions league", "premier league", "la liga",
+    "serie a", "bundesliga", "ligue 1", "ufc", "transfer",
+]
+
+
+def keyword_prefilter(cluster) -> bool:
+    """Returns True if the cluster plausibly matches any topic - cheap,
+    local, no API cost. False means confidently skip without ever asking
+    Gemini. Checked against all member headlines, not just the first."""
+    combined = " ".join(m["title"].lower() for m in cluster["members"])
+    return any(kw in combined for kw in KEYWORDS)
 
 TOPIC_PROMPT = """You are a topic classifier for a news channel with a specific, \
 narrow focus. The channel ONLY wants:
