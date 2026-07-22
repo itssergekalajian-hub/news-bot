@@ -23,6 +23,12 @@ GEMINI_URL = (
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SECONDS = 6
+# Summarization used to have no pacing at all between different clusters'
+# calls (only retries of the SAME call were spaced). With single-source
+# war posts now allowed, a run can need 50 individual summarize calls -
+# with zero pacing that alone blows past the free tier's RPM limit, which
+# is exactly what happened (23 requests in a minute against a 15 RPM cap).
+PACING_DELAY_SECONDS = 5
 
 SYSTEM_PROMPT = """You are writing for a fast-moving, well-read Telegram news channel called \
 MidWorld News. You will be given several headlines/posts and source names that a matching \
@@ -73,9 +79,13 @@ the last sentence of the write-up itself, with no source list of any kind.
 - If any source is an independent/OSINT account rather than a mainstream outlet, treat its \
 claims with the same "state what was reported, don't assert as fact beyond what's corroborated" \
 caution as any other source - do not give it more or less weight for being independent.
-- If the user message below includes an explicit note that this story is single-source/ \
-unverified, follow those instructions exactly - the flag must be clear and near the top of the \
-post, not buried or softened.
+- If the user message below includes an explicit note that this story is single-source, write it \
+the way a normal news writer would attribute a claim to one outlet - naturally, in-sentence, \
+using the source's actual name (e.g. "Clash Report says Iranian forces struck..." or "According \
+to Middle East Spectator, ..."). Do NOT use a separate disclaimer tag, label, or prefix like \
+"Unverified:" or "Single source:" - simple in-sentence attribution IS the signal to the reader \
+that this is one account's claim, not confirmed by others. Keep it natural and readable, not \
+clinical.
 - Ends with a short "Why it matters" line only if genuinely non-obvious (otherwise omit it).
 - Use Telegram-style single-asterisk *bold* only for the opening headline - nothing else needs \
 formatting.
@@ -129,11 +139,10 @@ def summarize_cluster(cluster, unverified=False):
 
     if unverified:
         user_content += (
-            "\n\nIMPORTANT: This report comes from a single independent/OSINT source only - "
-            "no wire service or second, independent source has corroborated it yet. You MUST "
-            "clearly flag this in your post, near the start of the write-up (e.g. \"Unverified - "
-            "single source:\" or similar direct wording) - do not present this as confirmed fact, "
-            "and do not soften or bury the caveat."
+            "\n\nNOTE: This comes from a single independent/OSINT source only - no wire service "
+            "or second source has corroborated it yet. Attribute the claim naturally by name in "
+            "your sentences (e.g. \"[Source] reports...\" or \"According to [Source], ...\") "
+            "rather than using a separate disclaimer label - simple attribution is enough."
         )
 
     payload = {
@@ -148,6 +157,11 @@ def summarize_cluster(cluster, unverified=False):
     except Exception as e:
         logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
         return None
+    finally:
+        # Pace calls to stay under the free-tier RPM limit - matters a lot
+        # more now that a single run can need many individual summarize
+        # calls (one per post, not batched like classification is).
+        time.sleep(PACING_DELAY_SECONDS)
 
     if result == "NO_SINGLE_EVENT" or result.startswith("NO_SINGLE_EVENT"):
         return None
