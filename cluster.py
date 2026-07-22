@@ -7,6 +7,20 @@ from difflib import SequenceMatcher
 
 from config import TITLE_SIMILARITY_THRESHOLD, MIN_SOURCES_NON_WIRE, FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS
 
+# War/MENA/conflict-tracking OSINT sources - these can trigger a post ALONE
+# (see is_confirmed below), unlike every other independent/commentary
+# source which still needs a second, different-lean source to agree.
+# Deliberately scoped to actual conflict-reporting accounts, NOT political
+# commentators (Nawfal, Duran, Owens, Shapiro) or finance analysts
+# (Fin Watch, Dalio, Bennett) - those still require real cross-confirmation.
+WAR_OSINT_SINGLE_SOURCE_LEANS = {
+    "osint_brics", "osint_mideast", "osint_defender", "osint_levins",
+    "ru_source", "ua_source", "ir_source", "ir_opposition", "il_source",
+    "osint_isw", "osint_bno", "osint_faytuks", "osint_clashreport",
+    "osint_megatron", "osint_alibk", "osint_wartranslated",
+    "osint_intelslava", "osint_thecradle", "osint_warfareanalysis",
+}
+
 
 def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
@@ -62,8 +76,13 @@ def cluster_entries(entries, similarity_threshold=None):
 def is_confirmed(cluster) -> bool:
     """
     A cluster counts as confirmed if:
-      - at least one wire or finance_wire source reported it, OR
-      - at least MIN_SOURCES_NON_WIRE sources from different lean buckets reported it
+      - at least one wire/finance_wire/sports_wire source reported it, OR
+      - at least MIN_SOURCES_NON_WIRE sources from different lean buckets reported it, OR
+      - at least one war/MENA OSINT source reported it (see
+        WAR_OSINT_SINGLE_SOURCE_LEANS) - allowed to post ALONE for speed on
+        fast-moving conflict coverage, but see needs_unverified_label()
+        below: any cluster that only qualifies through this path MUST be
+        clearly labeled unverified/single-source by the summarizer.
     """
     auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS
     if cluster["leans"] & auto_confirm_leans:
@@ -71,4 +90,22 @@ def is_confirmed(cluster) -> bool:
     non_wire_leans = cluster["leans"] - auto_confirm_leans
     if len(non_wire_leans) >= 2 and len(cluster["sources"]) >= MIN_SOURCES_NON_WIRE:
         return True
+    if cluster["leans"] & WAR_OSINT_SINGLE_SOURCE_LEANS:
+        return True
     return False
+
+
+def needs_unverified_label(cluster) -> bool:
+    """
+    True if this cluster only qualified via the single-source war-OSINT
+    allowance above - NOT genuine wire-tier or multi-source cross
+    confirmation. The summarizer must clearly flag these as
+    unverified/single-source rather than presenting them as confirmed news.
+    """
+    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS
+    if cluster["leans"] & auto_confirm_leans:
+        return False
+    non_wire_leans = cluster["leans"] - auto_confirm_leans
+    if len(non_wire_leans) >= 2 and len(cluster["sources"]) >= MIN_SOURCES_NON_WIRE:
+        return False
+    return bool(cluster["leans"] & WAR_OSINT_SINGLE_SOURCE_LEANS)
