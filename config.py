@@ -170,6 +170,15 @@ TITLE_SIMILARITY_THRESHOLD = 0.5
 NEAR_DUP_LOOKBACK_HOURS = 12
 NEAR_DUP_THRESHOLD = 0.4
 
+# Caps how many posts a single run can send. Matters for two reasons: (1)
+# API budget - with single-source war posts allowed, a busy run could
+# otherwise need 50+ individual summarization calls, blowing past the free
+# tier's RPM limit even with pacing; (2) reading experience - 50 posts
+# landing in the channel within a couple minutes isn't useful even if the
+# API could handle it. Anything not posted this run stays cached as
+# "relevant" and gets picked up on the next run instead of being lost.
+MAX_POSTS_PER_RUN = 15
+
 # How far back to look when clustering (minutes) - stories older than this
 # window are considered separate news cycles even if titles are similar
 CLUSTER_WINDOW_MINUTES = 180
