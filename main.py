@@ -20,7 +20,7 @@ import logging
 import sys
 from difflib import SequenceMatcher
 
-from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEAR_DUP_THRESHOLD
+from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEAR_DUP_THRESHOLD, MAX_POSTS_PER_RUN
 from storage import Storage
 from fetcher import fetch_all_entries
 from cluster import cluster_entries, is_confirmed, needs_unverified_label
@@ -127,9 +127,13 @@ def run_once(store: Storage):
 
     # --- Pass 3: summarize and post everything that made it through. ---
     posted_this_run = 0
+    posted_with_media_count = 0
 
     def try_summarize_and_post(cluster, allow_split_retry=True):
-        nonlocal posted_this_run
+        nonlocal posted_this_run, posted_with_media_count
+        if posted_this_run >= MAX_POSTS_PER_RUN:
+            return  # cap reached - remaining candidates stay cached as
+                     # relevant and get picked up on the next run instead
         try:
             unverified = needs_unverified_label(cluster)
             summary = summarize_cluster(cluster, unverified=unverified)
@@ -165,6 +169,14 @@ def run_once(store: Storage):
                 return
 
             media_url, media_type = upgrade_cluster_media(cluster)
+            if media_url:
+                posted_with_media_count += 1
+            else:
+                logger.info(
+                    "No media found for: %s (member links: %s)",
+                    cluster["title"][:80],
+                    [m["link"] for m in cluster["members"][:3]],
+                )
 
             post_to_channel(
                 summary,
@@ -180,9 +192,18 @@ def run_once(store: Storage):
             logger.error("Failed to summarize/post cluster '%s': %s", cluster["title"][:80], e)
 
     for c in ready_to_post:
+        if posted_this_run >= MAX_POSTS_PER_RUN:
+            logger.info(
+                "Reached MAX_POSTS_PER_RUN (%d) - remaining candidates will be picked up next run.",
+                MAX_POSTS_PER_RUN,
+            )
+            break
         try_summarize_and_post(c)
 
-    logger.info("Run complete. Posted %d new stories.", posted_this_run)
+    logger.info(
+        "Run complete. Posted %d new stories (%d with media, %d text-only).",
+        posted_this_run, posted_with_media_count, posted_this_run - posted_with_media_count,
+    )
 
 
 def run_sports_scores(store: Storage):
