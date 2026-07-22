@@ -24,7 +24,7 @@ from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEA
 from storage import Storage
 from fetcher import fetch_all_entries
 from cluster import cluster_entries, is_confirmed
-from filter import classify_batch, BATCH_SIZE
+from filter import classify_batch, keyword_prefilter, BATCH_SIZE
 from summarize import summarize_cluster
 from telegram_post import post_to_channel
 from sports_scores import fetch_upcoming_fixtures, fetch_recent_results
@@ -95,6 +95,13 @@ def run_once(store: Storage):
         if already_evaluated is True:
             ready_to_post.append(c)  # already known relevant from a prior run
         else:
+            if not keyword_prefilter(c):
+                # Confidently off-topic on keywords alone - never spends an
+                # API call, which matters a lot on accounts with a very low
+                # daily quota. Cached the same as a real "NO" verdict.
+                store.mark_evaluated(c["cluster_key"], False)
+                logger.info("Skipped (off-topic, keyword pre-filter): %s", c["title"][:80])
+                continue
             needs_classification.append(c)
 
     # --- Pass 2: batch-classify everything that needs it, a handful of
@@ -120,27 +127,59 @@ def run_once(store: Storage):
 
     # --- Pass 3: summarize and post everything that made it through. ---
     posted_this_run = 0
-    for c in ready_to_post:
-        try:
-            summary = summarize_cluster(c)
-            if summary is None:
-                logger.info("Skipped (not actually one event): %s", c["title"][:80])
-                continue
 
-            media_url, media_type = upgrade_cluster_media(c)
+    def try_summarize_and_post(cluster, allow_split_retry=True):
+        nonlocal posted_this_run
+        try:
+            summary = summarize_cluster(cluster)
+            if summary is None:
+                if allow_split_retry and len(cluster["members"]) > 1:
+                    # The summarizer determined this cluster's headlines
+                    # don't actually share one event - likely a false merge
+                    # from the title-similarity clustering being too loose
+                    # for a busy, fast-moving story. Retry once by
+                    # re-clustering just these members with a much stricter
+                    # threshold, so genuinely distinct developments each get
+                    # their own shot at posting instead of the whole thing
+                    # being thrown away. No further recursion if a
+                    # sub-cluster ALSO fails - just give up on that piece.
+                    sub_clusters = cluster_entries(cluster["members"], similarity_threshold=0.75)
+                    if len(sub_clusters) > 1:
+                        logger.info(
+                            "Retrying as %d smaller clusters (was 'not one event'): %s",
+                            len(sub_clusters), cluster["title"][:80],
+                        )
+                        for sub in sub_clusters:
+                            if not is_confirmed(sub):
+                                continue
+                            if store.is_posted(sub["cluster_key"]):
+                                continue
+                            if _is_near_duplicate(sub["title"], recent_posted_titles):
+                                continue
+                            try_summarize_and_post(sub, allow_split_retry=False)
+                    else:
+                        logger.info("Skipped (not actually one event): %s", cluster["title"][:80])
+                else:
+                    logger.info("Skipped (not actually one event): %s", cluster["title"][:80])
+                return
+
+            media_url, media_type = upgrade_cluster_media(cluster)
 
             post_to_channel(
                 summary,
-                sources=list(c["sources"]),
+                sources=list(cluster["sources"]),
                 media_url=media_url,
                 media_type=media_type,
             )
-            store.mark_posted(c["cluster_key"], title=c["title"])
-            recent_posted_titles.append(c["title"])  # so later clusters this run also check against it
+            store.mark_posted(cluster["cluster_key"], title=cluster["title"])
+            recent_posted_titles.append(cluster["title"])  # so later clusters this run also check against it
             posted_this_run += 1
-            logger.info("Posted: %s", c["title"][:80])
+            logger.info("Posted: %s", cluster["title"][:80])
         except Exception as e:
-            logger.error("Failed to summarize/post cluster '%s': %s", c["title"][:80], e)
+            logger.error("Failed to summarize/post cluster '%s': %s", cluster["title"][:80], e)
+
+    for c in ready_to_post:
+        try_summarize_and_post(c)
 
     logger.info("Run complete. Posted %d new stories.", posted_this_run)
 
