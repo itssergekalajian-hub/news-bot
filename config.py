@@ -137,6 +137,11 @@ TELEGRAM_SOURCES = [
     {"name": "Clash Report", "username": "ClashReport", "lean": "osint_clashreport"},
     # Fast-moving breaking news account, active coverage of Iran/Israel war.
     {"name": "Megatron", "username": "megatron_ron", "lean": "osint_megatron"},
+    # Respected Ukraine war OSINT/translation account.
+    {"name": "WarTranslated", "username": "wartranslated", "lean": "osint_wartranslated"},
+    {"name": "Intel Slava", "username": "intelslava", "lean": "osint_intelslava"},
+    {"name": "The Cradle", "username": "thecradlemedia", "lean": "osint_thecradle"},
+    {"name": "Warfare Analysis", "username": "WarfareAnalysis", "lean": "osint_warfareanalysis"},
     # Arabic-language Middle East/world news and analysis. Couldn't confirm
     # a separate English-only version - the summarizer already translates
     # non-English source content to English, so this works either way.
@@ -163,7 +168,7 @@ TITLE_SIMILARITY_THRESHOLD = 0.5
 # rather than posting the same evolving story again with slightly different
 # wording every hour.
 NEAR_DUP_LOOKBACK_HOURS = 12
-NEAR_DUP_THRESHOLD = 0.45
+NEAR_DUP_THRESHOLD = 0.4
 
 # How far back to look when clustering (minutes) - stories older than this
 # window are considered separate news cycles even if titles are similar
