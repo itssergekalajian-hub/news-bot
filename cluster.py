@@ -12,18 +12,22 @@ def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
 
-def cluster_entries(entries):
+def cluster_entries(entries, similarity_threshold=None):
     """
     entries: list of dicts from fetcher.fetch_all_entries() + storage recent entries
+    similarity_threshold: override for TITLE_SIMILARITY_THRESHOLD - used when
+        re-clustering a subset of entries more strictly (see main.py's retry
+        logic for when the summarizer reports a cluster wasn't really one event).
     Returns: list of clusters, each a dict:
         {cluster_key, title, members: [entries], sources: set, leans: set}
     """
+    threshold = similarity_threshold if similarity_threshold is not None else TITLE_SIMILARITY_THRESHOLD
     clusters = []
 
     for entry in entries:
         placed = False
         for cluster in clusters:
-            if _title_similarity(entry["title"], cluster["title"]) >= TITLE_SIMILARITY_THRESHOLD:
+            if _title_similarity(entry["title"], cluster["title"]) >= threshold:
                 cluster["members"].append(entry)
                 cluster["sources"].add(entry["source"])
                 cluster["leans"].add(entry["lean"])
