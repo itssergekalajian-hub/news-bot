@@ -28,17 +28,49 @@ def _entry_id(username: str, post_id: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _extract_media(msg):
-    """Returns (media_url, media_type) or (None, None)."""
-    video_el = msg.select_one("video.tgme_widget_message_video")
-    if video_el and video_el.get("src"):
-        return video_el["src"], "video"
+def _bg_image_url(el):
+    """Pulls the URL out of an inline `background-image: url(...)` style, which
+    is how the public web preview renders both single and grouped photos."""
+    if not el or not el.get("style"):
+        return None
+    match = re.search(r"background-image:\s*url\(['\"]?(.*?)['\"]?\)", el["style"])
+    return match.group(1) if match else None
 
-    photo_el = msg.select_one("a.tgme_widget_message_photo_wrap")
-    if photo_el and photo_el.get("style"):
-        match = re.search(r"background-image:\s*url\(['\"]?(.*?)['\"]?\)", photo_el["style"])
-        if match:
-            return match.group(1), "photo"
+
+def _extract_media(msg):
+    """Returns (media_url, media_type) or (None, None).
+
+    Video is preferred over a still image when both are present. Beyond plain
+    videos this also catches round (video-note) messages and GIF/animation
+    posts, and reads lazy-loaded video URLs from data-src, so far fewer video
+    posts fall through to text-only. Grouped-photo albums are handled too -
+    the first photo of the album is used as the representative image."""
+    # Any <video> the preview renders: normal video, round video-note, or a
+    # GIF/animation. src is sometimes deferred to data-src on the s/ page.
+    for video_el in msg.select("video"):
+        src = video_el.get("src") or video_el.get("data-src")
+        if src and src.startswith("http"):
+            return src, "video"
+
+    # Round video-notes and GIFs occasionally wrap the source differently.
+    for sel in ("a.tgme_widget_message_roundvideo_wrap",
+                "div.tgme_widget_message_roundvideo",
+                "a.tgme_widget_message_gif_wrap"):
+        el = msg.select_one(sel)
+        if el:
+            src = el.get("data-src") or el.get("href")
+            if src and src.startswith("http") and any(
+                src.split("?")[0].endswith(ext) for ext in (".mp4", ".mov", ".webm")
+            ):
+                return src, "video"
+
+    # Photos: single photo wrap or the first tile of a grouped album.
+    for sel in ("a.tgme_widget_message_photo_wrap",
+                "a.tgme_widget_message_grouped_wrap .tgme_widget_message_photo_wrap"):
+        for photo_el in msg.select(sel):
+            url = _bg_image_url(photo_el)
+            if url and url.startswith("http"):
+                return url, "photo"
 
     return None, None
 
