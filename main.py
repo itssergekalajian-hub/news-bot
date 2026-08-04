@@ -169,22 +169,25 @@ def run_once(store: Storage):
                 return
 
             media_url, media_type, fallback_image_url = upgrade_cluster_media(cluster)
-            if media_url:
-                posted_with_media_count += 1
-            else:
+            if not media_url and not fallback_image_url:
                 logger.info(
                     "No media found for: %s (member links: %s)",
                     cluster["title"][:80],
                     [m["link"] for m in cluster["members"][:3]],
                 )
 
-            post_to_channel(
+            sent_as = post_to_channel(
                 summary,
                 sources=list(cluster["sources"]),
                 media_url=media_url,
                 media_type=media_type,
                 fallback_image_url=fallback_image_url,
             )
+            # Count media by how the post ACTUALLY went out, not merely by
+            # whether a media URL was found - so a photo/video that fell back
+            # to text is reported honestly as text-only.
+            if sent_as in ("photo", "video"):
+                posted_with_media_count += 1
             store.mark_posted(cluster["cluster_key"], title=cluster["title"])
             recent_posted_titles.append(cluster["title"])  # so later clusters this run also check against it
             posted_this_run += 1
