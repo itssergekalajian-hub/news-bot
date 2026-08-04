@@ -170,18 +170,20 @@ TITLE_SIMILARITY_THRESHOLD = 0.5
 NEAR_DUP_LOOKBACK_HOURS = 12
 NEAR_DUP_THRESHOLD = 0.4
 
-# Caps how many posts a single run can send. Kept deliberately small because
-# the workflow now runs every 5 minutes (see .github/workflows/news-bot.yml):
-# posting just a couple of stories per frequent run makes the channel read
-# like a natural, steadily-updating feed instead of dumping a big batch all
-# at once. Anything over the cap isn't lost - it stays cached as "relevant"
-# and is picked up by the next run a few minutes later, so a genuine burst of
-# breaking news still clears quickly, just spaced out rather than flooded.
-# This also keeps each run's summarization API calls well under the free
-# tier's per-minute limit. Total API usage barely changes with the faster
-# schedule because every classification/summary is cached in the dedup DB -
-# the work scales with how much news there is, not how often the bot runs.
-MAX_POSTS_PER_RUN = 3
+# Caps how many posts a single run can send. Matters for two reasons: (1)
+# API budget - with single-source war posts allowed, a busy run could
+# otherwise need 50+ individual summarization calls, blowing past the free
+# tier's RPM limit even with pacing; (2) reading experience - 50 posts
+# landing in the channel within a couple minutes isn't useful even if the
+# API could handle it. Anything not posted this run stays cached as
+# "relevant" and gets picked up on the next run instead of being lost.
+#
+# NOTE on cadence: this repo is PRIVATE, so GitHub Actions minutes are
+# metered (~2000/month on the Free plan, ~3 min per run). That budget is
+# why the schedule can't run every few minutes - see the schedule comment
+# in .github/workflows/news-bot.yml. The value here is tuned together with
+# that interval, not in isolation.
+MAX_POSTS_PER_RUN = 15
 
 # How far back to look when clustering (minutes) - stories older than this
 # window are considered separate news cycles even if titles are similar

@@ -2,7 +2,7 @@
 
 Fully automated Telegram channel bot. Polls balanced sources (wire services +
 left-leaning + right-leaning outlets, plus X accounts and Telegram channels —
-see below) every 5 minutes via a GitHub Actions scheduled workflow, only
+see below) every 30 minutes via a GitHub Actions scheduled workflow, only
 posts a story once it's confirmed by a wire service OR by outlets from at
 least two different political leanings, then posts a neutral, fact-first
 summary. Runs entirely on GitHub's infrastructure — you don't manage a VPS,
@@ -243,15 +243,19 @@ repository secret**. Add these three:
 
 ## 5. That's it — it's already running
 
-The workflow at `.github/workflows/news-bot.yml` runs every 5 minutes
-automatically once it's on the `main` branch. No further setup. It posts
-only a few stories per run (`MAX_POSTS_PER_RUN` in `config.py`), so the
-channel updates like a natural, steady feed — news appears within a few
-minutes of breaking rather than arriving in a big batch every half hour.
+The workflow at `.github/workflows/news-bot.yml` runs every 30 minutes
+automatically once it's on the `main` branch. No further setup.
+
+Because this repo is **private**, GitHub Actions minutes are metered
+(~2000/month on the Free plan, ~3 min per run), so GitHub drops/delays many
+scheduled runs and actual runs can be 1–3 hours apart. Making the repo
+public removes the minute cap entirely (public repos get unlimited Actions
+minutes) and lets the schedule run much more frequently if you want a
+faster, more natural cadence.
 
 To verify it's working:
 - Go to the **Actions** tab in your repo → you'll see "News Bot Run" firing
-  every ~5 minutes.
+  (roughly every 1–3 hours on the metered private schedule).
 - Click any run → expand "Run news bot" to see the logs (same info you'd
   get from `journalctl` on a VPS).
 - You can also trigger a run immediately: Actions tab → News Bot Run →
