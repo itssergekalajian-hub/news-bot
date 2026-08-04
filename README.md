@@ -246,9 +246,16 @@ repository secret**. Add these three:
 The workflow at `.github/workflows/news-bot.yml` runs every 30 minutes
 automatically once it's on the `main` branch. No further setup.
 
+Because this repo is **private**, GitHub Actions minutes are metered
+(~2000/month on the Free plan, ~3 min per run), so GitHub drops/delays many
+scheduled runs and actual runs can be 1–3 hours apart. Making the repo
+public removes the minute cap entirely (public repos get unlimited Actions
+minutes) and lets the schedule run much more frequently if you want a
+faster, more natural cadence.
+
 To verify it's working:
 - Go to the **Actions** tab in your repo → you'll see "News Bot Run" firing
-  every ~30 minutes.
+  (roughly every 1–3 hours on the metered private schedule).
 - Click any run → expand "Run news bot" to see the logs (same info you'd
   get from `journalctl` on a VPS).
 - You can also trigger a run immediately: Actions tab → News Bot Run →
@@ -489,6 +496,37 @@ a different message type (a media group/album) - not built, since it
 wasn't clear that's specifically wanted over "make sure videos aren't
 missed and images are better quality," which this addresses. Ask if you
 want that too.
+
+## New: broader media coverage (more images and videos actually attach)
+
+A follow-up pass to attach media to many more posts - both stills and
+video - after real runs were still going out as text-only too often:
+
+1. **Images embedded only in the RSS body are now recovered.** Lots of
+   feeds (Guardian, NYT, Al Jazeera, Fox, WSJ and others) never fill the
+   `media:content` / `media:thumbnail` / `enclosure` fields the extractor
+   used to rely on - they put the article photo as a plain `<img>` inside
+   the `content:encoded` / `<description>` HTML. `fetcher.py` now parses
+   that HTML as a last resort and pulls the first real image out of it,
+   while filtering obvious junk (tracking pixels, feed icons, avatars,
+   logos) so a 1x1 pixel never gets posted as the story photo.
+2. **Videos are matched more reliably, and only when actually sendable.**
+   Telegram's `sendVideo` needs a *direct* video file (`.mp4`/`.mov`/
+   `.webm`); an `og:video` or `<enclosure>` that points at an embed/player
+   page (YouTube, Vimeo, a JW Player iframe) can't be sent that way. Both
+   the RSS extractor and `media_upgrade.py` now recognise the difference:
+   real video files are attached as video, embed URLs are ignored for the
+   video slot instead of being sent and failing.
+3. **A failed video no longer loses the image.** `media_upgrade.py` now
+   returns the best still image *alongside* any video it finds, and
+   `telegram_post.py` uses a fallback chain - try the video, and if
+   Telegram can't fetch it, attach the image before ever dropping to a
+   text-only post. Previously a bad video URL meant the post lost its media
+   entirely even when a perfectly good image was available.
+4. **More Telegram post types are picked up.** The public-preview scraper
+   now also catches round video-notes, GIF/animation posts, lazy-loaded
+   (`data-src`) video URLs, and the first tile of grouped photo albums,
+   and prefers a video over a still when a post has both.
 
 ## Researched: The Duran, Gonzalo Lira, Tucker Carlson, Andrew/Tristan Tate, Candace Owens
 

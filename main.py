@@ -168,7 +168,7 @@ def run_once(store: Storage):
                     logger.info("Skipped (not actually one event): %s", cluster["title"][:80])
                 return
 
-            media_url, media_type = upgrade_cluster_media(cluster)
+            media_url, media_type, fallback_image_url = upgrade_cluster_media(cluster)
             if media_url:
                 posted_with_media_count += 1
             else:
@@ -183,6 +183,7 @@ def run_once(store: Storage):
                 sources=list(cluster["sources"]),
                 media_url=media_url,
                 media_type=media_type,
+                fallback_image_url=fallback_image_url,
             )
             store.mark_posted(cluster["cluster_key"], title=cluster["title"])
             recent_posted_titles.append(cluster["title"])  # so later clusters this run also check against it

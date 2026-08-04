@@ -1,8 +1,12 @@
 """
 Posts a message to the configured Telegram channel using the Bot API.
-Supports plain text, photo+caption, or video+caption - falls back to
-plain text automatically if a media send fails (e.g. Telegram couldn't
-fetch the media URL), so a bad image/video never loses the post entirely.
+Supports plain text, photo+caption, or video+caption.
+
+Media is sent with a graceful fallback chain so a story keeps as much media
+as possible: if a video send fails (e.g. Telegram couldn't fetch the video
+URL) it retries with a still image when one is available, and only if that
+also fails does it drop to a plain-text post. A bad image/video never loses
+the post entirely.
 """
 import os
 import requests
@@ -53,24 +57,36 @@ def _send_media(endpoint: str, media_field: str, media_url: str, caption: str):
     return resp.json()
 
 
-def post_to_channel(text: str, sources: list, media_url: str = None, media_type: str = None):
+def post_to_channel(text: str, sources: list, media_url: str = None,
+                    media_type: str = None, fallback_image_url: str = None):
     full_text = text + _build_footer(sources)
+    caption = full_text if len(full_text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 3] + "..."
 
-    if media_url and media_type in ("photo", "video"):
-        caption = full_text if len(full_text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 3] + "..."
-        endpoint = "sendVideo" if media_type == "video" else "sendPhoto"
-        media_field = "video" if media_type == "video" else "photo"
+    # Build the ordered list of media attempts. A video is tried first, then
+    # a still image (either an explicit fallback or the photo itself), so a
+    # video Telegram can't fetch degrades to a photo before text-only.
+    attempts = []
+    if media_url and media_type == "video":
+        attempts.append(("sendVideo", "video", media_url))
+        if fallback_image_url and fallback_image_url != media_url:
+            attempts.append(("sendPhoto", "photo", fallback_image_url))
+    elif media_url and media_type == "photo":
+        attempts.append(("sendPhoto", "photo", media_url))
+    elif fallback_image_url:
+        attempts.append(("sendPhoto", "photo", fallback_image_url))
+
+    for endpoint, media_field, url in attempts:
         try:
-            result = _send_media(endpoint, media_field, media_url, caption)
+            result = _send_media(endpoint, media_field, url, caption)
             # If we had to truncate the caption, send the full text as a follow-up
             if len(full_text) > CAPTION_LIMIT:
                 _send_message(full_text)
             return result
         except Exception as e:
             logger.warning(
-                "Media send failed (%s: %s), falling back to text-only post", media_type, e
+                "Media send failed (%s via %s: %s), trying next fallback",
+                media_field, endpoint, e,
             )
-            # fall through to plain text below
 
     try:
         return _send_message(full_text)

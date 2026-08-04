@@ -177,6 +177,12 @@ NEAR_DUP_THRESHOLD = 0.4
 # landing in the channel within a couple minutes isn't useful even if the
 # API could handle it. Anything not posted this run stays cached as
 # "relevant" and gets picked up on the next run instead of being lost.
+#
+# NOTE on cadence: this repo is PRIVATE, so GitHub Actions minutes are
+# metered (~2000/month on the Free plan, ~3 min per run). That budget is
+# why the schedule can't run every few minutes - see the schedule comment
+# in .github/workflows/news-bot.yml. The value here is tuned together with
+# that interval, not in isolation.
 MAX_POSTS_PER_RUN = 15
 
 # How far back to look when clustering (minutes) - stories older than this
