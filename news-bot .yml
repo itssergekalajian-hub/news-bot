@@ -52,5 +52,25 @@ jobs:
           git config user.name "news-bot"
           git config user.email "news-bot@users.noreply.github.com"
           git add posted_stories.db
-          git diff --cached --quiet && echo "No DB changes to commit" || git commit -m "Update dedup DB [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "No DB changes to commit"
+            exit 0
+          fi
+          git commit -m "Update dedup DB [skip ci]"
+          # Push with retry. main can move between checkout and push (a
+          # frequent run overlapping, or a human merging a PR), which used to
+          # reject the push and mark the whole run failed even though the news
+          # posted fine. On rejection, merge the remote in - keeping any real
+          # code changes but letting THIS run's dedup DB win on conflict (it's
+          # a cache; the newest snapshot is the right one) - then retry.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Pushed dedup DB."
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt); syncing with remote and retrying..."
+            git fetch origin main
+            git merge -X ours --no-edit origin/main || true
+          done
+          echo "Could not push dedup DB after several attempts." >&2
+          exit 1
