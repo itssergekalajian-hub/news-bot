@@ -2,16 +2,17 @@ name: News Bot Run
 
 on:
   schedule:
-    # Every 30 minutes. NOTE: this repo is PRIVATE, so GitHub Actions minutes
-    # are metered (~2000/month on the Free plan, and each run uses ~3 min).
-    # A much faster cadence (e.g. every 5 min = ~26,000 min/month) would blow
-    # the monthly budget in a couple of days and then halt ALL runs until the
-    # quota resets - do NOT tighten this interval without either making the
-    # repo public (public repos get unlimited Actions minutes) or accounting
-    # for the minute budget. GitHub's scheduler is also best-effort, not
-    # exact - on a metered private repo it drops/delays many scheduled runs,
-    # so actual runs can be 1-3 hours apart even at this interval.
-    - cron: "*/30 * * * *"
+    # Every 5 minutes (GitHub Actions' minimum interval). Combined with a
+    # small MAX_POSTS_PER_RUN (see config.py), this makes the channel read
+    # like a natural, steadily-updating feed: news shows up within a few
+    # minutes of breaking and trickles out, instead of a big batch every half
+    # hour. This is only affordable because the repo is PUBLIC - public repos
+    # get unlimited free Actions minutes. If this repo is ever made private
+    # again, this interval MUST be widened (a metered private repo running
+    # every 5 min = ~26,000 min/month, which blows the ~2000/month Free quota
+    # in a couple of days and then halts ALL runs). GitHub's scheduler is
+    # best-effort, so runs can still lag a few minutes during high load.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
 
 # Prevent overlapping runs if one takes longer than 5 minutes
