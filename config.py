@@ -49,12 +49,45 @@ SOURCES = [
     # --- Sports (auto-confirming, like wire - low controversy, factual results/news) ---
     {"name": "BBC Football", "url": "https://feeds.bbci.co.uk/sport/football/rss.xml", "lean": "sports_wire"},
     {"name": "Sherdog MMA", "url": "https://www.sherdog.com/rss/news.xml", "lean": "sports_wire"},
+
+    # --- South Caucasus: Armenia & Azerbaijan. Each outlet gets its own lean,
+    # so an Armenian + an Azerbaijani outlet (or either one + a wire) cross-
+    # confirms - important for Armenia-Azerbaijan border / Nagorno-Karabakh
+    # stories where both sides' framing matters. Armenpress/Trend are the two
+    # state agencies; News.am/AzerNews are the wider-coverage outlets. ---
+    {"name": "Armenpress (Armenia)", "url": "https://armenpress.am/en/rss/", "lean": "am_state"},
+    {"name": "News.am (Armenia)", "url": "https://news.am/eng/rss/", "lean": "am_media"},
+    {"name": "Trend News Agency (Azerbaijan)", "url": "https://en.trend.az/rss/", "lean": "az_state"},
+    {"name": "AzerNews (Azerbaijan)", "url": "https://www.azernews.az/rss/", "lean": "az_media"},
+
+    # --- USA national (the existing US outlets above are their "World"
+    # editions; these cover US domestic/national news). Distinct leans. ---
+    {"name": "The Hill", "url": "https://thehill.com/news/feed/", "lean": "us_center"},
+    {"name": "NBC News", "url": "https://feeds.nbcnews.com/nbcnews/public/news", "lean": "us_media"},
+
+    # --- European Union / Europe-wide (EU institutions, Brussels policy) ---
+    {"name": "EURACTIV", "url": "https://www.euractiv.com/feed/", "lean": "eu_media"},
+    {"name": "Politico Europe", "url": "https://www.politico.eu/feed/", "lean": "eu_center"},
+
+    # --- Technology & AI. Treated as an auto-confirming "wire" tier (see
+    # TECH_WIRE_LEANS): tech/AI product & research reporting is factual, not
+    # contested geopolitics, so a single reputable outlet may post without a
+    # second source - same reasoning as finance_wire/sports_wire. The topic
+    # filter still enforces a "major only" bar (see filter.py category 8), so
+    # routine gadget/app/rumor items don't get through. ---
+    {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "lean": "tech_wire"},
+    {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "lean": "tech_wire"},
+    {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "lean": "tech_wire"},
+    {"name": "VentureBeat AI", "url": "https://venturebeat.com/category/ai/feed/", "lean": "tech_wire"},
 ]
 
 # Leans that auto-confirm a story on their own (same treatment as "wire"),
 # without needing a second source. Reputable, established outlets only.
 FINANCE_WIRE_LEANS = {"finance_wire"}
 SPORTS_WIRE_LEANS = {"sports_wire"}
+# Tech/AI outlets: factual product/research reporting, so a single reputable
+# source may post (the topic filter enforces the "major only" bar).
+TECH_WIRE_LEANS = {"tech_wire"}
 
 # Public Telegram channels, scraped via Telegram's public web preview
 # (t.me/s/<username>) - no bot token or API key needed since these are

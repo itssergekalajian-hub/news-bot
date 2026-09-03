@@ -5,7 +5,10 @@ is confirmed enough (per config rules) to post.
 import hashlib
 from difflib import SequenceMatcher
 
-from config import TITLE_SIMILARITY_THRESHOLD, MIN_SOURCES_NON_WIRE, FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS
+from config import (
+    TITLE_SIMILARITY_THRESHOLD, MIN_SOURCES_NON_WIRE,
+    FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS, TECH_WIRE_LEANS,
+)
 
 # War/MENA/conflict-tracking OSINT sources - these can trigger a post ALONE
 # (see is_confirmed below), unlike every other independent/commentary
@@ -76,7 +79,7 @@ def cluster_entries(entries, similarity_threshold=None):
 def is_confirmed(cluster) -> bool:
     """
     A cluster counts as confirmed if:
-      - at least one wire/finance_wire/sports_wire source reported it, OR
+      - at least one wire/finance_wire/sports_wire/tech_wire source reported it, OR
       - at least MIN_SOURCES_NON_WIRE sources from different lean buckets reported it, OR
       - at least one war/MENA OSINT source reported it (see
         WAR_OSINT_SINGLE_SOURCE_LEANS) - allowed to post ALONE for speed on
@@ -84,7 +87,7 @@ def is_confirmed(cluster) -> bool:
         below: any cluster that only qualifies through this path MUST be
         clearly labeled unverified/single-source by the summarizer.
     """
-    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS
+    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS
     if cluster["leans"] & auto_confirm_leans:
         return True
     non_wire_leans = cluster["leans"] - auto_confirm_leans
@@ -102,7 +105,7 @@ def needs_unverified_label(cluster) -> bool:
     confirmation. The summarizer must clearly flag these as
     unverified/single-source rather than presenting them as confirmed news.
     """
-    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS
+    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS
     if cluster["leans"] & auto_confirm_leans:
         return False
     non_wire_leans = cluster["leans"] - auto_confirm_leans

@@ -8,6 +8,16 @@ least two different political leanings, then posts a neutral, fact-first
 summary. Runs entirely on GitHub's infrastructure — you don't manage a VPS,
 a process, or uptime.
 
+**Coverage** spans Middle East conflict, the Russia–Ukraine war, major
+US and European Union news, the South Caucasus (Armenia, Azerbaijan, and
+Armenia–Azerbaijan relations / Nagorno-Karabakh), significant finance/markets
+moves, major football & MMA, and — added most recently — major **technology
+and AI** developments (frontier model/product launches, big-tech moves,
+funding/M&A, AI regulation, major cybersecurity incidents). Tech/AI outlets
+are treated as an auto-confirming "wire" tier since their reporting is factual
+rather than contested, while the topic filter still enforces a "major only"
+bar so routine gadget/app items don't get through.
+
 ## How "verification" actually works (read this)
 
 This is **not** a fake-news detector — no automated system can guarantee that.
