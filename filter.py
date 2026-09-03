@@ -61,6 +61,24 @@ KEYWORDS = [
     "senate", "white house", "nato", "eu ", "european union", "war",
     "attack", "strike", "assassinat", "military", "troops", "sanctions",
     "trump", "biden",
+    # USA national
+    "washington", "supreme court", "pentagon", "state department",
+    "white house", "governor", "u.s.", "united states",
+    # European Union / Europe-wide
+    "brussels", "european commission", "european parliament", "ecb",
+    "eurozone", "von der leyen", "nato",
+    # South Caucasus - Armenia & Azerbaijan
+    "armenia", "armenian", "yerevan", "pashinyan", "artsakh",
+    "azerbaijan", "azerbaijani", "baku", "aliyev", "nagorno", "karabakh",
+    "caucasus", "zangezur", "corridor",
+    # Technology & AI (specific tokens - avoid bare "ai" which matches too
+    # many unrelated words as a substring; " ai " with spaces catches the
+    # standalone word)
+    " ai ", "artificial intelligence", "openai", "anthropic", "chatgpt",
+    "gpt-", "gemini", "llm", "nvidia", "semiconductor", " chip ", "chipmaker",
+    "microsoft", "google", "apple", "meta ", "amazon", "tesla", "spacex",
+    "startup", "software", "cyberattack", "data breach", "ransomware",
+    "quantum", "robot", "self-driving", "silicon valley",
     # Finance/markets
     "stock", "index", "s&p", "dow", "nasdaq", "fed ", "federal reserve",
     "inflation", "gdp", "jobs report", "oil price", "gold price",
@@ -92,12 +110,22 @@ in South Lebanon specifically - these are core to this category, not edge cases.
 sanctions, peace talks, territorial changes, major statements from Russian/Ukrainian \
 leadership about the war)
 
-3. MAJOR news from Europe or the USA ONLY if it is genuinely significant at a national/ \
-international level: elections, major policy shifts, acts of political violence against \
-major public figures, major disasters, significant geopolitical decisions. \
-EXCLUDE: routine legal settlements or lawsuit payouts (even involving famous people), \
-celebrity/tabloid news, individual crime stories, local politics, human-interest pieces, \
-or anything that wouldn't be front-page news internationally.
+3. News from Europe (including the European Union - European Commission/Parliament/ECB \
+policy, EU-wide decisions, major member-state politics) or the USA (national politics, \
+Congress, White House, Supreme Court, federal policy) if it is significant at a national/ \
+international level: elections, major policy shifts, legislation, acts of political \
+violence against major public figures, major disasters, significant geopolitical or \
+economic decisions. EXCLUDE: routine legal settlements or lawsuit payouts (even involving \
+famous people), celebrity/tabloid news, individual crime stories, purely local politics, \
+human-interest pieces, or anything that wouldn't be front-page news nationally.
+
+3b. South Caucasus - Armenia and Azerbaijan. Because this channel specifically follows \
+this region, be more inclusive here than for #3: INCLUDE Armenia-Azerbaijan relations and \
+border/ceasefire developments, Nagorno-Karabakh, the Zangezur corridor, significant \
+Armenian or Azerbaijani domestic politics (government changes, elections, major protests, \
+major policy or security decisions), and their dealings with Russia, Turkey, Iran, the EU \
+or the USA. Still EXCLUDE trivia: routine local crime, sports, weather, and human-interest \
+pieces.
 
 4. MAJOR world news from anywhere else - ONLY significant global-impact events, same bar \
 as #3.
@@ -122,9 +150,18 @@ EXCLUDE: routine regular-season match reports outside of major leagues, minor tr
 lower-tier MMA events, and opinion/preview/gossip pieces that aren't reporting an actual \
 result or confirmed development.
 
+7. Technology & Artificial Intelligence - MAJOR developments only: significant AI model or \
+product launches (e.g. new frontier models from OpenAI, Anthropic, Google, Meta, xAI), \
+major announcements or strategic moves by big tech (Nvidia, Apple, Microsoft, Google, \
+Amazon, Meta, Tesla/SpaceX), large fundraises/acquisitions/IPOs, AI or tech regulation and \
+policy (EU AI Act, US/China chip rules, antitrust), major research breakthroughs, and \
+major cybersecurity incidents (large breaches, significant ransomware/state-linked hacks). \
+EXCLUDE: routine app or gadget updates, individual product reviews, minor feature releases, \
+small-startup PR, unconfirmed rumors/leaks, and how-to/opinion pieces.
+
 Given the headlines below (all about the same event), answer with ONLY one \
-word: YES if this event clearly falls into one of the 6 categories above under the \
-criteria given, or NO if it does not. When in doubt about categories 3-6, lean toward NO \
+word: YES if this event clearly falls into one of the categories above under the \
+criteria given, or NO if it does not. When in doubt about categories 3-7, lean toward NO \
 - this channel would rather miss a borderline story than post something off-focus. \
 No explanation, no punctuation, just YES or NO.
 """
