@@ -55,7 +55,7 @@ SOURCES = [
     # confirms - important for Armenia-Azerbaijan border / Nagorno-Karabakh
     # stories where both sides' framing matters. Armenpress/Trend are the two
     # state agencies; News.am/AzerNews are the wider-coverage outlets. ---
-    {"name": "Armenpress (Armenia)", "url": "https://armenpress.am/en/rss/", "lean": "am_state"},
+    {"name": "Public Radio of Armenia", "url": "https://en.armradio.am/feed/", "lean": "am_state"},
     {"name": "News.am (Armenia)", "url": "https://news.am/eng/rss/", "lean": "am_media"},
     {"name": "Trend News Agency (Azerbaijan)", "url": "https://en.trend.az/rss/", "lean": "az_state"},
     {"name": "AzerNews (Azerbaijan)", "url": "https://www.azernews.az/rss/", "lean": "az_media"},
@@ -66,7 +66,7 @@ SOURCES = [
     {"name": "NBC News", "url": "https://feeds.nbcnews.com/nbcnews/public/news", "lean": "us_media"},
 
     # --- European Union / Europe-wide (EU institutions, Brussels policy) ---
-    {"name": "EURACTIV", "url": "https://www.euractiv.com/feed/", "lean": "eu_media"},
+    {"name": "DW Europe", "url": "https://rss.dw.com/rdf/rss-en-eu", "lean": "eu_media"},
     {"name": "Politico Europe", "url": "https://www.politico.eu/feed/", "lean": "eu_center"},
 
     # --- Technology & AI. Treated as an auto-confirming "wire" tier (see
@@ -78,7 +78,8 @@ SOURCES = [
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "lean": "tech_wire"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "lean": "tech_wire"},
     {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "lean": "tech_wire"},
-    {"name": "VentureBeat AI", "url": "https://venturebeat.com/category/ai/feed/", "lean": "tech_wire"},
+    {"name": "TechCrunch AI", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "lean": "tech_wire"},
+    {"name": "MIT Technology Review", "url": "https://www.technologyreview.com/feed/", "lean": "tech_wire"},
 ]
 
 # Leans that auto-confirm a story on their own (same treatment as "wire"),
