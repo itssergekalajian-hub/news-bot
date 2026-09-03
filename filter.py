@@ -79,6 +79,11 @@ KEYWORDS = [
     "microsoft", "google", "apple", "meta ", "amazon", "tesla", "spacex",
     "startup", "software", "cyberattack", "data breach", "ransomware",
     "quantum", "robot", "self-driving", "silicon valley",
+    "deepmind", "mistral", "perplexity", " xai ", "hugging face",
+    "datacenter", "data center", "chatbot", "neural",
+    # AI/tech business (major funding, deals, listings)
+    "funding round", "raises $", "valuation", "acquisition", "acquires",
+    "ipo", "billion round", "series a", "series b", "series c",
     # Finance/markets
     "stock", "index", "s&p", "dow", "nasdaq", "fed ", "federal reserve",
     "inflation", "gdp", "jobs report", "oil price", "gold price",
