@@ -180,6 +180,28 @@ TELEGRAM_SOURCES = [
     # a separate English-only version - the summarizer already translates
     # non-English source content to English, so this works either way.
     {"name": "Ali Bk", "username": "Alibk3", "lean": "osint_alibk"},
+
+    # --- Official heads-of-state / leadership channels: news straight from
+    # the source. Treated like the state-media accounts above - each may
+    # trigger a post on its own (a leader's own statement IS the news; see
+    # WAR_OSINT_SINGLE_SOURCE_LEANS in cluster.py), but the summarizer flags
+    # them as single-source/unverified rather than independently confirmed.
+    #
+    # NOTE: Putin is already covered above by "Kremlin News (Putin)"
+    # (news_kremlin_eng), so he's not duplicated here. "Khamenei" is the
+    # current Iranian Supreme Leader (Ayatollah Khomeini died in 1989);
+    # khamenei_ir is his official English channel, sharing the ir_source
+    # lean with Press TV/IRNA (one Iranian-state voice). Netanyahu shares
+    # il_source with the IDF (one Israeli-government voice). Trump gets a new
+    # us_source lean.
+    #
+    # These t.me usernames are best-known official handles but couldn't be
+    # verified from the build sandbox (t.me is blocked here). A wrong handle
+    # simply fetches nothing (it never crashes the run); if any of these
+    # stops appearing, the exact @username is the one thing to correct.
+    {"name": "Donald Trump (official)", "username": "realDonaldTrump", "lean": "us_source"},
+    {"name": "Benjamin Netanyahu (official)", "username": "netanyahu", "lean": "il_source"},
+    {"name": "Ali Khamenei (official)", "username": "khamenei_ir", "lean": "ir_source"},
 ]
 
 # Minimum requirement for a story to be considered "confirmed" and postable:
