@@ -88,6 +88,17 @@ def _fetch_channel(name: str, username: str, lean: str):
     soup = BeautifulSoup(resp.text, "html.parser")
     messages = soup.select("div.tgme_widget_message")
 
+    # A channel that renders no message blocks at all almost always means the
+    # @username is wrong, private, or has been renamed (t.me serves a 200
+    # placeholder page rather than a 404, so this would otherwise fail
+    # silently). Surface it so a bad handle is visible in the run log.
+    if not messages:
+        logger.warning(
+            "Telegram channel '%s' (@%s) returned no posts - check the username "
+            "(wrong/renamed/private handles fetch nothing without erroring).",
+            name, username,
+        )
+
     for msg in messages:
         post_attr = msg.get("data-post")  # e.g. "brics_info/12345"
         if not post_attr:
