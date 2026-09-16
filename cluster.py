@@ -105,6 +105,36 @@ def is_confirmed(cluster) -> bool:
     return False
 
 
+# Topic buckets, used to diversify which stories actually post each run so a
+# very high-volume category (Middle East / war OSINT, which auto-confirms and
+# floods every run) doesn't fill all the slots and starve finance, US/EU
+# politics, tech, etc. Bucketing is by source lean: the specialized leans
+# below mark their category; everything else falls to "general".
+_US_LEANS = {"us_source", "us_center", "us_media"}
+_EUROPE_LEANS = {"eu_media", "eu_center"}
+_CAUCASUS_LEANS = {"am_state", "am_media", "az_state", "az_media"}
+
+
+def topic_bucket(cluster) -> str:
+    """Coarse topic label for a cluster, from its source leans. Priority
+    order matters: a story a finance wire also carried is bucketed 'finance'
+    even if a general wire ran it too."""
+    leans = cluster.get("leans", set())
+    if leans & FINANCE_WIRE_LEANS:
+        return "finance"
+    if leans & TECH_WIRE_LEANS:
+        return "tech"
+    if leans & _US_LEANS:
+        return "us"
+    if leans & _EUROPE_LEANS:
+        return "europe"
+    if leans & _CAUCASUS_LEANS:
+        return "caucasus"
+    if leans & SPORTS_WIRE_LEANS:
+        return "sports"
+    return "general"
+
+
 def needs_unverified_label(cluster) -> bool:
     """
     True if this cluster only qualified via the single-source war-OSINT

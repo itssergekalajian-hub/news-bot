@@ -45,6 +45,9 @@ SOURCES = [
     {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "lean": "finance_wire"},
     {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "lean": "finance_wire"},
     {"name": "Kitco News", "url": "https://www.kitco.com/news/category/mining/rss", "lean": "finance_wire"},
+    {"name": "MarketWatch", "url": "https://feeds.marketwatch.com/marketwatch/topstories/", "lean": "finance_wire"},
+    {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "lean": "finance_wire"},
+    {"name": "CNBC Economy", "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html", "lean": "finance_wire"},
 
     # --- Sports (auto-confirming, like wire - low controversy, factual results/news) ---
     {"name": "BBC Football", "url": "https://feeds.bbci.co.uk/sport/football/rss.xml", "lean": "sports_wire"},
@@ -237,7 +240,12 @@ NEAR_DUP_THRESHOLD = 0.4
 # tier's per-minute limit, and total API usage barely changes with the faster
 # schedule because every classification/summary is cached in the dedup DB -
 # the work scales with how much news there is, not how often the bot runs.
-MAX_POSTS_PER_RUN = 3
+#
+# Raised from 3 to 6: at 3, the high-volume Middle East / war bucket filled
+# every slot and starved finance, US/EU politics and tech. The extra room,
+# together with the per-topic round-robin in main.py (_diversify_by_topic),
+# lets each run carry a spread across categories instead of one firehose.
+MAX_POSTS_PER_RUN = 6
 
 # How far back to look when clustering (minutes) - stories older than this
 # window are considered separate news cycles even if titles are similar

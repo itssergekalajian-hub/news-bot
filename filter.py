@@ -89,6 +89,16 @@ KEYWORDS = [
     "inflation", "gdp", "jobs report", "oil price", "gold price",
     "silver", "bitcoin", "crypto", "btc", "eth ", "rate cut", "rate hike",
     "tariff", "market", "recession",
+    # Central banks, econ data & policy
+    "fomc", "federal open market", "interest rate", "rate decision",
+    "rate hold", "powell", "central bank", "ecb", "bank of england",
+    "treasury", "bond", "yield", "cpi", "payroll", "jobless", "pce",
+    "debt ceiling", "shutdown", "budget", "stimulus", "earnings",
+    # Financial / crypto regulation & legislation
+    "clarity act", "genius act", "stablecoin", "sec ", "cftc", " etf",
+    "antitrust", "regulation", "regulator", "bill passes", "house passes",
+    "senate passes", "legislation", "executive order", "veto",
+    "supreme court", "congress", "sanction",
     # Sports (major only - filter.py's LLM check still applies the "major"
     # bar, this just decides whether to bother asking at all)
     "world cup", "champions league", "premier league", "la liga",
@@ -115,14 +125,19 @@ in South Lebanon specifically - these are core to this category, not edge cases.
 sanctions, peace talks, territorial changes, major statements from Russian/Ukrainian \
 leadership about the war)
 
-3. News from Europe (including the European Union - European Commission/Parliament/ECB \
-policy, EU-wide decisions, major member-state politics) or the USA (national politics, \
-Congress, White House, Supreme Court, federal policy) if it is significant at a national/ \
-international level: elections, major policy shifts, legislation, acts of political \
-violence against major public figures, major disasters, significant geopolitical or \
-economic decisions. EXCLUDE: routine legal settlements or lawsuit payouts (even involving \
-famous people), celebrity/tabloid news, individual crime stories, purely local politics, \
-human-interest pieces, or anything that wouldn't be front-page news nationally.
+3. USA and Europe national politics, policy and government - this is a CORE focus of the \
+channel, so be INCLUSIVE, not stingy. INCLUDE: U.S. federal politics and governance \
+(Congress/Senate bills, votes and legislation; White House actions and executive orders; \
+Supreme Court rulings; major federal agency or regulatory actions; elections and campaigns; \
+significant policy fights; government shutdowns, budget and debt-ceiling battles; major \
+appointments/firings; notable statements or actions by the President, congressional \
+leaders, or cabinet officials), and the equivalent for the European Union and major \
+European countries (EU legislation and Commission/Parliament/Council actions, ECB and \
+national-government decisions, national elections and coalition politics, major protests or \
+policy shifts). A specific, named piece of legislation or a concrete government/policy \
+action clearly qualifies. EXCLUDE only genuinely trivial items: celebrity/tabloid news, \
+individual local crime with no national significance, human-interest pieces, and routine \
+lawsuits/settlements with no policy impact.
 
 3b. South Caucasus - Armenia and Azerbaijan. Because this channel specifically follows \
 this region, be more inclusive here than for #3: INCLUDE Armenia-Azerbaijan relations and \
@@ -135,16 +150,18 @@ pieces.
 4. MAJOR world news from anywhere else - ONLY significant global-impact events, same bar \
 as #3.
 
-5. Finance/markets - ONLY genuinely significant, market-moving news: major stock index \
-moves (roughly 1%+ moves in a major index, not a single stock), central bank rate \
-decisions, major commodity price swings (oil, gold, silver, and other metals), major \
-cryptocurrency price swings (large BTC/ETH moves, not altcoin chatter), sovereign debt or \
-currency crises, major economic data releases (inflation, jobs reports, GDP). \
-EXCLUDE: single-company analyst notes, price target changes, rating upgrades/downgrades, \
-one company's business strategy or product announcements, and general crypto-industry \
-commentary that isn't about an actual broad price move. A story about what one bank \
-thinks of one company's stock, or one exchange's growth plans, does NOT qualify even if \
-CoinDesk or a business outlet covered it - only genuinely market-wide moves and events do.
+5. Finance, markets, and economic policy - also a CORE focus, so be INCLUSIVE of genuinely \
+consequential items (not just raw price moves). INCLUDE: central-bank meetings, decisions \
+and guidance - the Fed/FOMC, ECB, Bank of England, etc. (a rate HOLD and the accompanying \
+statement/press conference count, not only rate changes); major market moves (roughly 1%+ \
+in a major index, big swings in oil/gold/other commodities, or large BTC/ETH moves); major \
+economic data (inflation/CPI, jobs/payrolls, GDP, PCE); sovereign-debt or currency stress; \
+AND major financial, crypto or economic LEGISLATION and REGULATION - e.g. the CLARITY Act, \
+the GENIUS/stablecoin acts, market-structure or banking bills, significant SEC/CFTC/Treasury \
+actions, tariffs, and antitrust or economic policy with broad market impact; plus major \
+corporate-finance events with wide impact (very large M&A, notable IPOs, bellwether \
+earnings). EXCLUDE: routine single-stock analyst notes / price-target or rating changes, \
+minor altcoin chatter, and one company's ordinary product news.
 
 6. Sports - ONLY major football (soccer) news: World Cup results/major moments, Champions \
 League results/major moments, major results or major transfers/incidents in top European \
@@ -166,9 +183,13 @@ small-startup PR, unconfirmed rumors/leaks, and how-to/opinion pieces.
 
 Given the headlines below (all about the same event), answer with ONLY one \
 word: YES if this event clearly falls into one of the categories above under the \
-criteria given, or NO if it does not. When in doubt about categories 3-7, lean toward NO \
-- this channel would rather miss a borderline story than post something off-focus. \
-No explanation, no punctuation, just YES or NO.
+criteria given, or NO if it does not. For the CORE categories - US/EU politics & policy \
+(3), the Middle East (1), Russia-Ukraine (2), finance & economic policy (5), and tech/AI \
+(7) - when a story is genuinely newsworthy and plausibly fits, lean toward YES; the channel \
+WANTS solid coverage of these and was previously missing real finance and US/EU stories. \
+Only lean toward NO for borderline sports (6), minor "rest of world" items (4), and clearly \
+trivial/celebrity/local/human-interest content. No explanation, no punctuation, just YES or \
+NO.
 """
 
 
