@@ -23,7 +23,7 @@ from difflib import SequenceMatcher
 from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEAR_DUP_THRESHOLD, MAX_POSTS_PER_RUN
 from storage import Storage
 from fetcher import fetch_all_entries
-from cluster import cluster_entries, is_confirmed, needs_unverified_label
+from cluster import cluster_entries, is_confirmed, needs_unverified_label, topic_bucket
 from filter import classify_batch, keyword_prefilter, BATCH_SIZE
 from summarize import summarize_cluster
 from telegram_post import post_to_channel
@@ -35,6 +35,32 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("news_bot.main")
+
+
+# Order buckets so under-represented categories get a posting slot before the
+# firehose "general" (Middle East / war) bucket in each round-robin cycle.
+_BUCKET_ORDER = ["finance", "us", "europe", "tech", "caucasus", "sports", "general"]
+
+
+def _diversify_by_topic(clusters: list) -> list:
+    """Reorder ready-to-post clusters by round-robining across topic buckets,
+    so a single high-volume category can't fill every slot and crowd out
+    finance, US/EU politics, tech, etc. Each bucket keeps its own internal
+    order; empty buckets are simply skipped."""
+    buckets = {}
+    for c in clusters:
+        buckets.setdefault(topic_bucket(c), []).append(c)
+    ordered = []
+    progressed = True
+    while progressed:
+        progressed = False
+        # Known buckets in priority order, then any unexpected ones.
+        for b in _BUCKET_ORDER + [k for k in buckets if k not in _BUCKET_ORDER]:
+            lst = buckets.get(b)
+            if lst:
+                ordered.append(lst.pop(0))
+                progressed = True
+    return ordered
 
 
 def _is_near_duplicate(title: str, recent_posted_titles: list) -> bool:
@@ -195,7 +221,11 @@ def run_once(store: Storage):
         except Exception as e:
             logger.error("Failed to summarize/post cluster '%s': %s", cluster["title"][:80], e)
 
-    for c in ready_to_post:
+    # Spread the run's posts across topics (finance / US / EU / tech / ...)
+    # instead of letting the high-volume Middle East / war bucket take every
+    # slot - that starvation is why finance and US/EU politics were rarely
+    # showing up. Anything past the per-run cap stays cached for the next run.
+    for c in _diversify_by_topic(ready_to_post):
         if posted_this_run >= MAX_POSTS_PER_RUN:
             logger.info(
                 "Reached MAX_POSTS_PER_RUN (%d) - remaining candidates will be picked up next run.",
