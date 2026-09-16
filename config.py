@@ -53,6 +53,18 @@ SOURCES = [
     {"name": "BBC Football", "url": "https://feeds.bbci.co.uk/sport/football/rss.xml", "lean": "sports_wire"},
     {"name": "Sherdog MMA", "url": "https://www.sherdog.com/rss/news.xml", "lean": "sports_wire"},
 
+    # --- Broader world coverage: fills the biggest geographic gaps (South/
+    # East Asia, the wider Arab/Gulf world, Africa, Latin America) so major
+    # global events outside the ME/Russia/US/EU core are actually seen. Own
+    # distinct leans (not auto-confirming): a big world story gets corroborated
+    # by a wire (BBC/DW/France24/Al Jazeera) or a second regional outlet, and
+    # the topic filter still holds these to the "major world news" bar. ---
+    {"name": "Times of India", "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms", "lean": "world_india"},
+    {"name": "Al Arabiya English", "url": "https://english.alarabiya.net/feed/rss2/en.xml", "lean": "world_alarabiya"},
+    {"name": "AllAfrica", "url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", "lean": "world_africa"},
+    {"name": "MercoPress (South America)", "url": "https://en.mercopress.com/rss", "lean": "world_latam"},
+    {"name": "The Independent World", "url": "https://www.independent.co.uk/news/world/rss", "lean": "world_independent"},
+
     # --- South Caucasus: Armenia & Azerbaijan. Each outlet gets its own lean,
     # so an Armenian + an Azerbaijani outlet (or either one + a wire) cross-
     # confirms - important for Armenia-Azerbaijan border / Nagorno-Karabakh
