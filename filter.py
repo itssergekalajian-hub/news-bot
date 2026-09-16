@@ -103,6 +103,16 @@ KEYWORDS = [
     # bar, this just decides whether to bother asking at all)
     "world cup", "champions league", "premier league", "la liga",
     "serie a", "bundesliga", "ligue 1", "ufc", "transfer",
+    # Major world events (so significant global news outside the core regions
+    # reaches the classifier; the LLM still enforces the "major world" bar)
+    "coup", "earthquake", "explosion", "wildfire", "hurricane", "typhoon",
+    "flood", "cyclone", "volcano", "tsunami", "outbreak", "pandemic",
+    "genocide", "massacre", "ceasefire", "summit", "treaty", "referendum",
+    "resigns", "resignation", "impeach", "protests", "uprising", "martial law",
+    "nuclear", "missile", "drone", "hostage", "terror", "airstrike",
+    "prime minister", "president", "united nations", "u.n.", "g7", "g20",
+    "india", "china", "pakistan", "africa", "nigeria", "sudan", "venezuela",
+    "north korea", "taiwan", "japan", "south korea",
 ]
 
 
