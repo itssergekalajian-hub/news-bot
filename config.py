@@ -60,7 +60,7 @@ SOURCES = [
     # by a wire (BBC/DW/France24/Al Jazeera) or a second regional outlet, and
     # the topic filter still holds these to the "major world news" bar. ---
     {"name": "Times of India", "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms", "lean": "world_india"},
-    {"name": "Al Arabiya English", "url": "https://english.alarabiya.net/feed/rss2/en.xml", "lean": "world_alarabiya"},
+    {"name": "Arab News", "url": "https://www.arabnews.com/rss.xml", "lean": "world_arabnews"},
     {"name": "AllAfrica", "url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", "lean": "world_africa"},
     {"name": "MercoPress (South America)", "url": "https://en.mercopress.com/rss", "lean": "world_latam"},
     {"name": "The Independent World", "url": "https://www.independent.co.uk/news/world/rss", "lean": "world_independent"},
