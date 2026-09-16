@@ -154,23 +154,10 @@ TELEGRAM_SOURCES = [
     # The most reliable individual source specifically for football transfer
     # news - auto-confirming given his singular track record on this beat.
     {"name": "Fabrizio Romano", "username": "FabrizioRomano", "lean": "sports_wire"},
-    # Added per explicit request despite the earlier flagged concern (his
-    # broader media operation includes disclosed paid crypto promotions
-    # alongside news commentary) - same treatment as every other individual
-    # account: never auto-confirms alone, needs a second different-lean
-    # source to actually trigger a post.
-    {"name": "Mario Nawfal", "username": "MarioNawfal", "lean": "osint_nawfal"},
-    # Added per explicit request. Documented pro-Russian/contrarian
-    # editorial slant (comparable tier to Kremlin News) - a bias question,
-    # not a legitimacy one. Same non-auto-confirming treatment as everything
-    # else.
-    {"name": "The Duran", "username": "thedurancom", "lean": "osint_duran"},
-    # Added per explicit request. Worth knowing: described by Wikipedia as
-    # a "far-right political commentator... conspiracy theorist," dismissed
-    # from The Daily Wire in 2024 over comments characterized as
-    # antisemitic. Same non-auto-confirming treatment as every other
-    # individual account.
-    {"name": "Candace Owens", "username": "CandaceOwens", "lean": "osint_owens"},
+    # NOTE: Mario Nawfal (@MarioNawfal), The Duran (@thedurancom) and Candace
+    # Owens (@CandaceOwens) were removed - their public t.me/s previews return
+    # no posts (preview disabled / handle unavailable), so they fetched
+    # nothing every run. Re-add with a working @handle if one is confirmed.
     # Unofficial repost/fan channel (labeled "no impersonation") - reposts
     # his real commentary but isn't his own verified account (he mainly
     # posts on LinkedIn/X). Flagged for transparency; same non-auto-
@@ -178,10 +165,8 @@ TELEGRAM_SOURCES = [
     {"name": "Ray Dalio (fan/repost channel)", "username": "RayDalio", "lean": "osint_dalio"},
     # Confirmed official - forex/price-action trading analysis.
     {"name": "Justin Bennett (Daily Price Action)", "username": "justinbennett", "lean": "osint_bennett"},
-    # Confirmed official. Strongly partisan conservative commentary, but no
-    # documented extremism/fabrication track record (unlike the sources
-    # declined above) - within normal political-commentary bounds.
-    {"name": "Ben Shapiro", "username": "benshapiro", "lean": "osint_shapiro"},
+    # Ben Shapiro (@benshapiro) removed - its public t.me/s preview returned
+    # no posts every run (preview disabled / handle unavailable).
     # Large, well-established breaking conflict-news aggregator.
     {"name": "Clash Report", "username": "ClashReport", "lean": "osint_clashreport"},
     # Fast-moving breaking news account, active coverage of Iran/Israel war.
