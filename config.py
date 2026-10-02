@@ -28,6 +28,20 @@ SOURCES = [
     # --- Middle East depth (not treated as neutral wire - needs a second source to confirm) ---
     {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lean": "middle_east"},
     {"name": "Times of Israel", "url": "https://www.timesofisrael.com/feed/", "lean": "il_media"},
+    {"name": "Jerusalem Post", "url": "https://www.jpost.com/rss/rssfeedsheadlines.aspx", "lean": "il_jpost"},
+
+    # --- Lebanon: the main Lebanese TV networks (across the spectrum - LBCI,
+    # MTV, Al Jadeed) plus Naharnet as a reliable English-language anchor.
+    # Each gets its own lean so Lebanese outlets cross-confirm with each other
+    # or with a wire / Al Jazeera, giving balanced Lebanon + Hezbollah/Israel
+    # coverage. NOTE: these outlets' exact RSS endpoints couldn't be verified
+    # from the build sandbox; any that don't return valid RSS are logged and
+    # skipped (never crash the run) and can be swapped - to a corrected URL or
+    # to the station's Telegram channel - once a run shows which need it.
+    {"name": "Naharnet (Lebanon)", "url": "https://www.naharnet.com/rss/latest_news", "lean": "lb_naharnet"},
+    {"name": "LBCI Lebanon", "url": "https://www.lbcgroup.tv/Rss/lebanon-news/5/en", "lean": "lb_lbci"},
+    {"name": "MTV Lebanon", "url": "https://www.mtv.com.lb/rss", "lean": "lb_mtv"},
+    {"name": "Al Jadeed", "url": "https://www.aljadeed.tv/rss", "lean": "lb_aljadeed"},
 
     # --- Russia-Ukraine depth (independent, exiled Russian outlet - needs a second source) ---
     {"name": "The Moscow Times", "url": "https://www.themoscowtimes.com/rss/news", "lean": "ru_independent"},
