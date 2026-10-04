@@ -30,18 +30,14 @@ SOURCES = [
     {"name": "Times of Israel", "url": "https://www.timesofisrael.com/feed/", "lean": "il_media"},
     {"name": "Jerusalem Post", "url": "https://www.jpost.com/rss/rssfeedsheadlines.aspx", "lean": "il_jpost"},
 
-    # --- Lebanon: the main Lebanese TV networks (across the spectrum - LBCI,
-    # MTV, Al Jadeed) plus Naharnet as a reliable English-language anchor.
-    # Each gets its own lean so Lebanese outlets cross-confirm with each other
-    # or with a wire / Al Jazeera, giving balanced Lebanon + Hezbollah/Israel
-    # coverage. NOTE: these outlets' exact RSS endpoints couldn't be verified
-    # from the build sandbox; any that don't return valid RSS are logged and
-    # skipped (never crash the run) and can be swapped - to a corrected URL or
-    # to the station's Telegram channel - once a run shows which need it.
-    {"name": "Naharnet (Lebanon)", "url": "https://www.naharnet.com/rss/latest_news", "lean": "lb_naharnet"},
-    {"name": "LBCI Lebanon", "url": "https://www.lbcgroup.tv/Rss/lebanon-news/5/en", "lean": "lb_lbci"},
-    {"name": "MTV Lebanon", "url": "https://www.mtv.com.lb/rss", "lean": "lb_mtv"},
-    {"name": "Al Jadeed", "url": "https://www.aljadeed.tv/rss", "lean": "lb_aljadeed"},
+    # --- Lebanon. The specific Lebanese TV networks (LBCI/MTV/Al Jadeed) and
+    # Naharnet don't expose a public RSS feed we could get working, so instead
+    # we pull Lebanon news through Google News' RSS aggregator: a guaranteed-
+    # valid feed that surfaces trustworthy outlets (Reuters, AP, L'Orient
+    # Today, Naharnet, Al Jazeera, the TV stations when newsworthy, etc.)
+    # covering Lebanon. Own lean, so a Lebanon story still corroborates with a
+    # wire / Al Jazeera, and the topic filter holds it to the "major" bar.
+    {"name": "Lebanon (Google News)", "url": "https://news.google.com/rss/search?q=Lebanon&hl=en-US&gl=US&ceid=US:en", "lean": "lb_news"},
 
     # --- Russia-Ukraine depth (independent, exiled Russian outlet - needs a second source) ---
     {"name": "The Moscow Times", "url": "https://www.themoscowtimes.com/rss/news", "lean": "ru_independent"},
@@ -74,7 +70,7 @@ SOURCES = [
     # by a wire (BBC/DW/France24/Al Jazeera) or a second regional outlet, and
     # the topic filter still holds these to the "major world news" bar. ---
     {"name": "Times of India", "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms", "lean": "world_india"},
-    {"name": "Arab News", "url": "https://www.arabnews.com/rss.xml", "lean": "world_arabnews"},
+    {"name": "Gulf / Saudi Arabia (Google News)", "url": "https://news.google.com/rss/search?q=Saudi%20Arabia%20OR%20Gulf%20OR%20UAE%20OR%20Qatar&hl=en-US&gl=US&ceid=US:en", "lean": "world_gulf"},
     {"name": "AllAfrica", "url": "https://allafrica.com/tools/headlines/rdf/latest/headlines.rdf", "lean": "world_africa"},
     {"name": "MercoPress (South America)", "url": "https://en.mercopress.com/rss", "lean": "world_latam"},
     {"name": "The Independent World", "url": "https://www.independent.co.uk/news/world/rss", "lean": "world_independent"},

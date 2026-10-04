@@ -325,6 +325,14 @@ def main():
         # Don't exit(1) here - the news portion already succeeded, a sports
         # scores failure shouldn't mark the whole workflow run as failed.
 
+    # Keep the committed dedup DB from growing without bound (old rows beyond
+    # the clustering/dedup windows are dead weight). Never fatal.
+    try:
+        deleted = store.prune()
+        logger.info("Pruned %d old rows from the dedup DB and vacuumed it.", deleted)
+    except Exception as e:
+        logger.error("DB prune failed (non-fatal): %s", e)
+
     logger.info("News bot run finished.")
 
 
