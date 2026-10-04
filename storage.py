@@ -164,3 +164,38 @@ class Storage:
                 "INSERT OR IGNORE INTO sports_posted (sports_key, posted_at) VALUES (?, ?)",
                 (sports_key, time.time()),
             )
+
+    def prune(self, seen_days=7, posted_days=90, evaluated_days=30, sports_days=90):
+        """Delete old rows and VACUUM so the committed SQLite file stops
+        growing without bound (it had crossed GitHub's 50MB warning, heading
+        for the 100MB hard limit).
+
+        seen_entries is the culprit: it stores every entry from every source
+        on every run, but only entries inside the clustering window (a few
+        hours) are ever read, so a few days' retention is plenty. posted and
+        evaluated are kept much longer so a recurring story still dedupes and
+        isn't re-evaluated. VACUUM actually shrinks the file on disk (plain
+        DELETEs don't). Returns the number of rows deleted."""
+        now = time.time()
+        cutoffs = [
+            ("seen_entries", "published", seen_days),
+            ("posted", "posted_at", posted_days),
+            ("evaluated", "evaluated_at", evaluated_days),
+            ("sports_posted", "posted_at", sports_days),
+        ]
+        deleted = 0
+        with self._conn() as conn:
+            for table, col, days in cutoffs:
+                # table/col are hardcoded above, never user input.
+                cur = conn.execute(
+                    f"DELETE FROM {table} WHERE {col} < ?", (now - days * 86400,)
+                )
+                deleted += max(cur.rowcount, 0)
+        # VACUUM must run outside a transaction - use an autocommit connection.
+        conn = sqlite3.connect(self.db_path, isolation_level=None)
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+        return deleted
+
