@@ -1,6 +1,6 @@
 """
-Fetches upcoming fixtures and recent results for the configured leagues/UFC
-from TheSportsDB's free API. This is deliberately separate from the news
+Fetches upcoming fixtures and recent results for the configured football
+leagues from TheSportsDB's free API. This is deliberately separate from the news
 pipeline (fetcher.py / cluster.py / filter.py / summarize.py) - fixtures and
 results are structured factual data (who's playing whom and when, or the
 final score), not headlines that need cross-source confirmation or topic
@@ -22,6 +22,14 @@ logger = logging.getLogger("news_bot.sports_scores")
 
 BASE_URL = f"https://www.thesportsdb.com/api/v1/json/{THESPORTSDB_API_KEY}"
 
+# TheSportsDB 403s requests that don't look like a browser (a bot-UA block,
+# not a key problem) - send a normal browser User-Agent, same as the RSS
+# fetcher does.
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+}
+
 
 def _parse_event_datetime(event: dict):
     date_str = event.get("dateEvent")
@@ -42,7 +50,7 @@ def fetch_upcoming_fixtures():
 
     for league_name, league_id in SPORTS_LEAGUES.items():
         try:
-            resp = requests.get(f"{BASE_URL}/eventsnextleague.php", params={"id": league_id}, timeout=15)
+            resp = requests.get(f"{BASE_URL}/eventsnextleague.php", params={"id": league_id}, headers=HEADERS, timeout=15)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
@@ -77,7 +85,7 @@ def fetch_recent_results():
 
     for league_name, league_id in SPORTS_LEAGUES.items():
         try:
-            resp = requests.get(f"{BASE_URL}/eventspastleague.php", params={"id": league_id}, timeout=15)
+            resp = requests.get(f"{BASE_URL}/eventspastleague.php", params={"id": league_id}, headers=HEADERS, timeout=15)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:

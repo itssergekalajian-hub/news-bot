@@ -102,7 +102,7 @@ KEYWORDS = [
     # Sports (major only - filter.py's LLM check still applies the "major"
     # bar, this just decides whether to bother asking at all)
     "world cup", "champions league", "premier league", "la liga",
-    "serie a", "bundesliga", "ligue 1", "ufc", "transfer",
+    "serie a", "bundesliga", "ligue 1", "transfer",
     # Major world events (so significant global news outside the core regions
     # reaches the classifier; the LLM still enforces the "major world" bar)
     "coup", "earthquake", "explosion", "wildfire", "hurricane", "typhoon",
@@ -173,14 +173,13 @@ corporate-finance events with wide impact (very large M&A, notable IPOs, bellwet
 earnings). EXCLUDE: routine single-stock analyst notes / price-target or rating changes, \
 minor altcoin chatter, and one company's ordinary product news.
 
-6. Sports - ONLY major football (soccer) news: World Cup results/major moments, Champions \
-League results/major moments, major results or major transfers/incidents in top European \
-leagues (Premier League, La Liga, Serie A, Bundesliga, Ligue 1). Also major MMA news: UFC/ \
-major-promotion event results (especially title fights and main-card results), major \
-fighter news (retirements, big signings, suspensions, major upsets). \
-EXCLUDE: routine regular-season match reports outside of major leagues, minor transfers, \
-lower-tier MMA events, and opinion/preview/gossip pieces that aren't reporting an actual \
-result or confirmed development.
+6. Sports - FOOTBALL (soccer) ONLY, and only the top competitions: the UEFA \
+Champions League, the big-five European leagues (Premier League, La Liga, Serie A, \
+Bundesliga, Ligue 1), and the FIFA World Cup. Count major results, major moments, and \
+major confirmed transfers/signings in those competitions. EXCLUDE everything else: all \
+other sports (NO MMA/UFC, NO basketball, tennis, cricket, motorsport, American football, \
+etc.), lower divisions and other leagues/cups, routine mid-table match reports, minor \
+transfers, and opinion/preview/gossip that isn't an actual result or confirmed deal.
 
 7. Technology & Artificial Intelligence - MAJOR developments only: significant AI model or \
 product launches (e.g. new frontier models from OpenAI, Anthropic, Google, Meta, xAI), \
