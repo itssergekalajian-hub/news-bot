@@ -67,9 +67,9 @@ SOURCES = [
     {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "lean": "finance_wire"},
     {"name": "CNBC Economy", "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html", "lean": "finance_wire"},
 
-    # --- Sports (auto-confirming, like wire - low controversy, factual results/news) ---
+    # --- Sports: FOOTBALL ONLY (auto-confirming like wire - factual results/
+    # news). Scoped to football per request; no MMA/other sports. ---
     {"name": "BBC Football", "url": "https://feeds.bbci.co.uk/sport/football/rss.xml", "lean": "sports_wire"},
-    {"name": "Sherdog MMA", "url": "https://www.sherdog.com/rss/news.xml", "lean": "sports_wire"},
 
     # --- Broader world coverage: fills the biggest geographic gaps (South/
     # East Asia, the wider Arab/Gulf world, Africa, Latin America) so major
@@ -293,15 +293,17 @@ THESPORTSDB_API_KEY = "3"
 # are wrong or a league gets renamed, sports_scores.py logs a clear warning
 # naming which one failed rather than crashing - check the Actions logs and
 # report back the exact league name if one never seems to produce fixtures.
+# TheSportsDB league IDs for the competitions in scope. Scoped to FOOTBALL
+# ONLY, per request: the UEFA Champions League, the big-five European leagues,
+# and the World Cup. No MMA/UFC or other sports.
 SPORTS_LEAGUES = {
+    "UEFA Champions League": 4480,
     "Premier League": 4328,
     "La Liga": 4335,
     "Serie A": 4332,
     "Bundesliga": 4331,
     "Ligue 1": 4334,
-    "UEFA Champions League": 4480,
     "FIFA World Cup": 4429,
-    "UFC": 4443,
 }
 
 # How far ahead to look for upcoming fixtures, and how far back to check for
