@@ -259,6 +259,18 @@ def run_sports_scores(store: Storage):
     here AND by an article from BBC Football/Fabrizio Romano in the news
     pipeline would post twice as two unrelated-looking messages.
     """
+    # The public TheSportsDB test key "3" is rejected (403) for these
+    # endpoints, so skip cleanly instead of spamming 403 warnings every run.
+    # Set a real THESPORTSDB_API_KEY (free from thesportsdb.com) as a secret
+    # to enable the fixtures/results digest.
+    from config import THESPORTSDB_API_KEY
+    if THESPORTSDB_API_KEY in ("", "3", None):
+        logger.info(
+            "Sports scores skipped: no TheSportsDB API key set "
+            "(set THESPORTSDB_API_KEY to enable football fixtures/results)."
+        )
+        return
+
     recent_posted_titles = store.get_recent_posted_titles(NEAR_DUP_LOOKBACK_HOURS)
 
     new_fixtures = []
