@@ -39,7 +39,7 @@ logger = logging.getLogger("news_bot.main")
 
 # Order buckets so under-represented categories get a posting slot before the
 # firehose "general" (Middle East / war) bucket in each round-robin cycle.
-_BUCKET_ORDER = ["finance", "us", "europe", "tech", "caucasus", "sports", "general"]
+_BUCKET_ORDER = ["top", "finance", "us", "europe", "tech", "caucasus", "sports", "general"]
 
 
 def _diversify_by_topic(clusters: list) -> list:
@@ -121,7 +121,12 @@ def run_once(store: Storage):
         if already_evaluated is True:
             ready_to_post.append(c)  # already known relevant from a prior run
         else:
-            if not keyword_prefilter(c):
+            # Top-tier aggregator stories (Google News Top Stories / World)
+            # skip the keyword pre-filter and always go to the classifier: a
+            # top global headline must never be dropped just because its
+            # wording happens to miss our keyword list. Everything else still
+            # uses the cheap keyword gate to save API calls.
+            if topic_bucket(c) != "top" and not keyword_prefilter(c):
                 # Confidently off-topic on keywords alone - never spends an
                 # API call, which matters a lot on accounts with a very low
                 # daily quota. Cached the same as a real "NO" verdict.
