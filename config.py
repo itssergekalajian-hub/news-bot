@@ -8,6 +8,14 @@ This is not a claim about objective truth - it's a heuristic for
 """
 
 SOURCES = [
+    # --- Top global headlines: Google News' "Top Stories" and "World"
+    # aggregators - algorithmically the biggest stories in the world right now
+    # (Reuters/AP/BBC/etc.). Auto-confirming (top_wire) and first priority in
+    # the per-run diversifier, so the day's most important, world-affecting
+    # news is never missed. Guaranteed-valid feeds. ---
+    {"name": "Top Stories (Google News)", "url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", "lean": "top_wire"},
+    {"name": "World Headlines (Google News)", "url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en", "lean": "top_wire"},
+
     # --- Wire services / newswires (treated as high-trust, near-instant confirmation) ---
     {"name": "BBC World", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "lean": "wire"},
     {"name": "UPI World News", "url": "https://rss.upi.com/news/tn_int.rss", "lean": "wire"},
@@ -114,6 +122,13 @@ SPORTS_WIRE_LEANS = {"sports_wire"}
 # Tech/AI outlets: factual product/research reporting, so a single reputable
 # source may post (the topic filter enforces the "major only" bar).
 TECH_WIRE_LEANS = {"tech_wire"}
+# "Top headlines" aggregators (Google News Top Stories / World). These surface
+# whatever is the biggest story in the world right now, drawn from Reuters/AP/
+# BBC/etc., so they auto-confirm (a top headline doesn't need a second source
+# to prove it's real) and are given FIRST priority in the per-run diversifier
+# (main.py) so the day's most important, world-affecting news is never missed
+# or crowded out. The topic filter still drops soft/celebrity/sports fluff.
+TOP_WIRE_LEANS = {"top_wire"}
 
 # Public Telegram channels, scraped via Telegram's public web preview
 # (t.me/s/<username>) - no bot token or API key needed since these are
@@ -252,7 +267,14 @@ NEAR_DUP_THRESHOLD = 0.4
 # every slot and starved finance, US/EU politics and tech. The extra room,
 # together with the per-topic round-robin in main.py (_diversify_by_topic),
 # lets each run carry a spread across categories instead of one firehose.
-MAX_POSTS_PER_RUN = 6
+#
+# Raised again 6 -> 10 for more total volume. NOTE the real ceiling on how
+# much can post per DAY is the shared Gemini free-tier budget (~500 calls/day
+# across classification + summarization, see filter.py / summarize.py): once
+# that's exhausted, summaries fail and stories defer to the next day. If you
+# want substantially more throughput, raise that quota (a paid Gemini key),
+# not just this number.
+MAX_POSTS_PER_RUN = 10
 
 # How far back to look when clustering (minutes) - stories older than this
 # window are considered separate news cycles even if titles are similar

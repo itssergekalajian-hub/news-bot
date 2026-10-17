@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 
 from config import (
     TITLE_SIMILARITY_THRESHOLD, MIN_SOURCES_NON_WIRE,
-    FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS, TECH_WIRE_LEANS,
+    FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS, TECH_WIRE_LEANS, TOP_WIRE_LEANS,
 )
 
 # War/MENA/conflict-tracking OSINT sources - these can trigger a post ALONE
@@ -94,7 +94,7 @@ def is_confirmed(cluster) -> bool:
         below: any cluster that only qualifies through this path MUST be
         clearly labeled unverified/single-source by the summarizer.
     """
-    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS
+    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS | TOP_WIRE_LEANS
     if cluster["leans"] & auto_confirm_leans:
         return True
     non_wire_leans = cluster["leans"] - auto_confirm_leans
@@ -120,6 +120,8 @@ def topic_bucket(cluster) -> str:
     order matters: a story a finance wire also carried is bucketed 'finance'
     even if a general wire ran it too."""
     leans = cluster.get("leans", set())
+    if leans & TOP_WIRE_LEANS:
+        return "top"
     if leans & FINANCE_WIRE_LEANS:
         return "finance"
     if leans & TECH_WIRE_LEANS:
@@ -142,7 +144,7 @@ def needs_unverified_label(cluster) -> bool:
     confirmation. The summarizer must clearly flag these as
     unverified/single-source rather than presenting them as confirmed news.
     """
-    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS
+    auto_confirm_leans = {"wire"} | FINANCE_WIRE_LEANS | SPORTS_WIRE_LEANS | TECH_WIRE_LEANS | TOP_WIRE_LEANS
     if cluster["leans"] & auto_confirm_leans:
         return False
     non_wire_leans = cluster["leans"] - auto_confirm_leans

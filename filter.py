@@ -191,15 +191,25 @@ major cybersecurity incidents (large breaches, significant ransomware/state-link
 EXCLUDE: routine app or gadget updates, individual product reviews, minor feature releases, \
 small-startup PR, unconfirmed rumors/leaks, and how-to/opinion pieces.
 
+8. Top world story of the day - ANY event that is currently a leading global headline or a \
+major breaking development that people worldwide are talking about and that meaningfully \
+affects the world: a war or major escalation/ceasefire, a leader's death/ouster/election, a \
+coup, a mass-casualty attack or disaster, a landmark summit/treaty/deal, a major economic or \
+market shock, a historic court ruling, a nuclear/space/scientific milestone, a pandemic or \
+public-health emergency. If a reasonable person would say "this is one of the biggest news \
+stories in the world right now," answer YES even if it doesn't fit categories 1-7 neatly. \
+This exists so genuinely world-shaping news is never missed. Still EXCLUDE celebrity gossip, \
+viral/entertainment fluff, routine crime, and sports (covered only by #6).
+
 Given the headlines below (all about the same event), answer with ONLY one \
 word: YES if this event clearly falls into one of the categories above under the \
 criteria given, or NO if it does not. For the CORE categories - US/EU politics & policy \
-(3), the Middle East (1), Russia-Ukraine (2), finance & economic policy (5), and tech/AI \
-(7) - when a story is genuinely newsworthy and plausibly fits, lean toward YES; the channel \
-WANTS solid coverage of these and was previously missing real finance and US/EU stories. \
-Only lean toward NO for borderline sports (6), minor "rest of world" items (4), and clearly \
-trivial/celebrity/local/human-interest content. No explanation, no punctuation, just YES or \
-NO.
+(3), the Middle East (1), Russia-Ukraine (2), finance & economic policy (5), tech/AI (7), \
+and anything that is genuinely a top world story (8) - when a story is newsworthy and \
+plausibly fits, lean toward YES; the channel WANTS full coverage of the most important \
+world news and must not miss it. Only lean toward NO for borderline sports (6), clearly \
+minor "rest of world" items (4), and trivial/celebrity/local/human-interest content. No \
+explanation, no punctuation, just YES or NO.
 """
 
 
