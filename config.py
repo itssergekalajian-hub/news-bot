@@ -7,6 +7,8 @@ This is not a claim about objective truth - it's a heuristic for
 "reported broadly enough across the spectrum that it's very likely real."
 """
 
+import os
+
 SOURCES = [
     # --- Top global headlines: Google News' "Top Stories" and "World"
     # aggregators - algorithmically the biggest stories in the world right now
@@ -284,10 +286,13 @@ CLUSTER_WINDOW_MINUTES = 180
 DB_PATH = "posted_stories.db"
 
 # --- Sports fixtures & results (separate from the news pipeline - see sports_scores.py) ---
-# Uses TheSportsDB's free public API (test key "3" - fine for this volume of
-# use; if it ever gets rate-limited, a free personal key from
-# thesportsdb.com is a drop-in replacement here).
-THESPORTSDB_API_KEY = "3"
+# TheSportsDB. The old public test key "3" is now REJECTED (403) for the
+# league endpoints, so the fixtures/results digest only runs when a real key
+# is supplied via the THESPORTSDB_API_KEY env var / GitHub secret (free from
+# thesportsdb.com). Until then sports_scores.py skips itself cleanly - football
+# results/transfers still come through the news pipeline (BBC Football,
+# Fabrizio Romano). "3" is treated as "no key set".
+THESPORTSDB_API_KEY = os.environ.get("THESPORTSDB_API_KEY", "3")
 
 # TheSportsDB league IDs for the competitions in scope. If any of these IDs
 # are wrong or a league gets renamed, sports_scores.py logs a clear warning
