@@ -23,7 +23,10 @@ from difflib import SequenceMatcher
 from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEAR_DUP_THRESHOLD, MAX_POSTS_PER_RUN
 from storage import Storage
 from fetcher import fetch_all_entries
-from cluster import cluster_entries, is_confirmed, needs_unverified_label, topic_bucket
+from cluster import (
+    cluster_entries, is_confirmed, is_high_impact_economic,
+    needs_unverified_label, topic_bucket,
+)
 from filter import classify_batch, keyword_prefilter, BATCH_SIZE
 from summarize import summarize_cluster
 from telegram_post import post_to_channel
@@ -198,6 +201,9 @@ def run_once(store: Storage):
                 else:
                     logger.info("Skipped (not actually one event): %s", cluster["title"][:80])
                 return
+
+            if is_high_impact_economic(cluster):
+                summary = f"🔴 High Impact {summary}"
 
             media_url, media_type, fallback_image_url = upgrade_cluster_media(cluster)
             if not media_url and not fallback_image_url:

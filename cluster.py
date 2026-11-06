@@ -3,6 +3,7 @@ Groups similar headlines into "events" and determines whether an event
 is confirmed enough (per config rules) to post.
 """
 import hashlib
+import re
 from difflib import SequenceMatcher
 
 from config import (
@@ -31,9 +32,18 @@ WAR_OSINT_SINGLE_SOURCE_LEANS = {
     "us_source",
 }
 
+_HIGH_IMPACT_ECONOMIC_RE = re.compile(r"\b(?:CPI|NFP|FOMC)\b", re.IGNORECASE)
+
 
 def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+def is_high_impact_economic(cluster) -> bool:
+    """Return whether any headline in the cluster mentions a major US release."""
+    titles = [cluster.get("title", "")]
+    titles.extend(member.get("title", "") for member in cluster.get("members", []))
+    return any(_HIGH_IMPACT_ECONOMIC_RE.search(title) for title in titles)
 
 
 def cluster_entries(entries, similarity_threshold=None):
