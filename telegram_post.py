@@ -21,6 +21,7 @@ Media is attached as reliably as possible:
 import os
 import requests
 import logging
+from urllib.parse import quote
 
 logger = logging.getLogger("news_bot.telegram")
 
@@ -47,8 +48,19 @@ DOWNLOAD_HEADERS = {
 }
 
 
-def _build_footer(sources):
-    return "\n\nSources: " + ", ".join(sorted(sources))
+def _build_footer(sources, source_links=None):
+    if source_links:
+        links = []
+        for name, url in source_links[:2]:
+            label = "".join(
+                f"\\{char}" if char in r"\_*[]()" else char
+                for char in name
+            )
+            safe_url = quote(url, safe=":/?&=#%+;,@!$'*-._~")
+            links.append(f"[{label}]({safe_url})")
+        if links:
+            return "\n\n📰 Sources: " + " · ".join(links)
+    return "\n\n📰 Sources: " + ", ".join(sorted(sources))
 
 
 def _send_message(text: str):
@@ -149,11 +161,12 @@ def _try_send_media(endpoint: str, media_field: str, url: str, caption: str) -> 
 
 
 def post_to_channel(text: str, sources: list, media_url: str = None,
-                    media_type: str = None, fallback_image_url: str = None):
+                    media_type: str = None, fallback_image_url: str = None,
+                    source_links: list[tuple[str, str]] | None = None):
     """Post a story. Returns how it was ultimately sent: "video", "photo",
     or "text" (so callers can log accurate media stats). Raises only if even
     the plain-text send fails."""
-    full_text = text + _build_footer(sources)
+    full_text = text + _build_footer(sources, source_links)
     caption = full_text if len(full_text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 3] + "..."
 
     # Ordered media attempts. A video is tried first, then a still image

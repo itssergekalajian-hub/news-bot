@@ -116,14 +116,15 @@ class Storage:
                 (cluster_key, title, time.time()),
             )
 
-    def get_recent_posted_titles(self, lookback_hours: float):
-        """Returns a list of titles posted within the lookback window - used
-        to detect near-duplicate/re-hashed stories before posting again."""
-        cutoff = time.time() - lookback_hours * 3600
+    def get_recent_posted_titles(self, limit: int = 30):
+        """Return the latest posted titles for near-duplicate checks."""
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT title FROM posted WHERE posted_at >= ? AND title != ''",
-                (cutoff,),
+                """SELECT title FROM posted
+                   WHERE title != ''
+                   ORDER BY posted_at DESC
+                   LIMIT ?""",
+                (limit,),
             ).fetchall()
         return [r[0] for r in rows]
 
@@ -198,4 +199,3 @@ class Storage:
         finally:
             conn.close()
         return deleted
-

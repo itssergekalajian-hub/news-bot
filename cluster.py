@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from config import (
     TITLE_SIMILARITY_THRESHOLD, MIN_SOURCES_NON_WIRE,
     FINANCE_WIRE_LEANS, SPORTS_WIRE_LEANS, TECH_WIRE_LEANS, TOP_WIRE_LEANS,
+    NEAR_DUP_THRESHOLD,
 )
 
 # War/MENA/conflict-tracking OSINT sources - these can trigger a post ALONE
@@ -37,6 +38,14 @@ _HIGH_IMPACT_ECONOMIC_RE = re.compile(r"\b(?:CPI|NFP|FOMC)\b", re.IGNORECASE)
 
 def _title_similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+def is_near_duplicate(title: str, posted_titles: list[str]) -> bool:
+    """Whether a headline is too similar to any recently posted story title."""
+    return any(
+        _title_similarity(title, posted_title) >= NEAR_DUP_THRESHOLD
+        for posted_title in posted_titles
+    )
 
 
 def is_high_impact_economic(cluster) -> bool:

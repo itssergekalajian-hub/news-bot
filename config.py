@@ -245,12 +245,8 @@ MIN_SOURCES_NON_WIRE = 2
 # real safety net against false merges now, not this threshold alone.
 TITLE_SIMILARITY_THRESHOLD = 0.5
 
-# Before posting, a story's headline is checked against everything posted in
-# the last NEAR_DUP_LOOKBACK_HOURS - if it's too similar to something already
-# posted, it's treated as a re-hash of an already-covered story and skipped,
-# rather than posting the same evolving story again with slightly different
-# wording every hour.
-NEAR_DUP_LOOKBACK_HOURS = 12
+# Before posting, compare a story's headline against the 30 most recent posted
+# titles; overly similar headlines are treated as follow-up duplicates.
 NEAR_DUP_THRESHOLD = 0.4
 
 # Caps how many posts a single run can send. Kept small on purpose: the

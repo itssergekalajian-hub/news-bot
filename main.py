@@ -18,13 +18,12 @@ from a GitHub Actions workflow that triggers it on a cron schedule (see
 """
 import logging
 import sys
-from difflib import SequenceMatcher
 
-from config import DB_PATH, CLUSTER_WINDOW_MINUTES, NEAR_DUP_LOOKBACK_HOURS, NEAR_DUP_THRESHOLD, MAX_POSTS_PER_RUN
+from config import DB_PATH, CLUSTER_WINDOW_MINUTES, MAX_POSTS_PER_RUN
 from storage import Storage
 from fetcher import fetch_all_entries
 from cluster import (
-    cluster_entries, is_confirmed, is_high_impact_economic,
+    cluster_entries, is_confirmed, is_high_impact_economic, is_near_duplicate,
     needs_unverified_label, topic_bucket,
 )
 from filter import classify_batch, keyword_prefilter, BATCH_SIZE
@@ -66,13 +65,6 @@ def _diversify_by_topic(clusters: list) -> list:
     return ordered
 
 
-def _is_near_duplicate(title: str, recent_posted_titles: list) -> bool:
-    for posted_title in recent_posted_titles:
-        if SequenceMatcher(None, title.lower(), posted_title.lower()).ratio() >= NEAR_DUP_THRESHOLD:
-            return True
-    return False
-
-
 def run_once(store: Storage):
     new_entries = fetch_all_entries()
     logger.info("Fetched %d entries from sources", len(new_entries))
@@ -101,7 +93,7 @@ def run_once(store: Storage):
     clusters = cluster_entries(recent_entries)
     logger.info("Formed %d clusters from %d recent entries", len(clusters), len(recent_entries))
 
-    recent_posted_titles = store.get_recent_posted_titles(NEAR_DUP_LOOKBACK_HOURS)
+    recent_posted_titles = store.get_recent_posted_titles()
 
     # --- Pass 1: figure out which clusters need a fresh classification
     # call, and which are already known to be posted, off-topic, or
@@ -114,7 +106,7 @@ def run_once(store: Storage):
             continue
         if store.is_posted(c["cluster_key"]):
             continue
-        if _is_near_duplicate(c["title"], recent_posted_titles):
+        if is_near_duplicate(c["title"], recent_posted_titles):
             logger.info("Skipped (near-duplicate of recent post): %s", c["title"][:80])
             continue
 
@@ -193,7 +185,7 @@ def run_once(store: Storage):
                                 continue
                             if store.is_posted(sub["cluster_key"]):
                                 continue
-                            if _is_near_duplicate(sub["title"], recent_posted_titles):
+                            if is_near_duplicate(sub["title"], recent_posted_titles):
                                 continue
                             try_summarize_and_post(sub, allow_split_retry=False)
                     else:
@@ -204,6 +196,20 @@ def run_once(store: Storage):
 
             if is_high_impact_economic(cluster):
                 summary = f"🔴 High Impact {summary}"
+
+            source_links = []
+            seen_sources = set()
+            for member in sorted(
+                    cluster["members"],
+                    key=lambda item: item.get("published", 0),
+                    reverse=True):
+                source, url = member.get("source"), member.get("link")
+                if (source and url and url.startswith(("http://", "https://"))
+                        and source not in seen_sources):
+                    source_links.append((source, url))
+                    seen_sources.add(source)
+                    if len(source_links) == 2:
+                        break
 
             media_url, media_type, fallback_image_url = upgrade_cluster_media(cluster)
             if not media_url and not fallback_image_url:
@@ -216,6 +222,7 @@ def run_once(store: Storage):
             sent_as = post_to_channel(
                 summary,
                 sources=list(cluster["sources"]),
+                source_links=source_links,
                 media_url=media_url,
                 media_type=media_type,
                 fallback_image_url=fallback_image_url,
@@ -226,7 +233,8 @@ def run_once(store: Storage):
             if sent_as in ("photo", "video"):
                 posted_with_media_count += 1
             store.mark_posted(cluster["cluster_key"], title=cluster["title"])
-            recent_posted_titles.append(cluster["title"])  # so later clusters this run also check against it
+            recent_posted_titles.insert(0, cluster["title"])
+            del recent_posted_titles[30:]
             posted_this_run += 1
             logger.info("Posted: %s", cluster["title"][:80])
         except Exception as e:
@@ -277,7 +285,7 @@ def run_sports_scores(store: Storage):
         )
         return
 
-    recent_posted_titles = store.get_recent_posted_titles(NEAR_DUP_LOOKBACK_HOURS)
+    recent_posted_titles = store.get_recent_posted_titles()
 
     new_fixtures = []
     for fx in fetch_upcoming_fixtures():
@@ -285,7 +293,7 @@ def run_sports_scores(store: Storage):
         title = f"{fx['home']} vs {fx['away']}"
         if store.is_sports_posted(key):
             continue
-        if _is_near_duplicate(title, recent_posted_titles):
+        if is_near_duplicate(title, recent_posted_titles):
             store.mark_sports_posted(key)  # don't re-check this event every run
             continue
         new_fixtures.append(fx)
@@ -297,7 +305,7 @@ def run_sports_scores(store: Storage):
         title = f"{res['home']} {res['home_score']}-{res['away_score']} {res['away']}"
         if store.is_sports_posted(key):
             continue
-        if _is_near_duplicate(title, recent_posted_titles):
+        if is_near_duplicate(title, recent_posted_titles):
             store.mark_sports_posted(key)
             continue
         new_results.append(res)
