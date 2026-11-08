@@ -8,9 +8,10 @@ via the account's actual quota page that 2.5 Flash only has a 20 requests/day
 free-tier cap on this account, while 3.5 Flash-Lite has 500/day - the model
 version choice was the bottleneck, not the account itself.
 """
+import base64
+import logging
 import os
 import time
-import logging
 import requests
 
 from fetcher import fetch_article_context
@@ -31,12 +32,17 @@ RETRY_BASE_DELAY_SECONDS = 6
 # with zero pacing that alone blows past the free tier's RPM limit, which
 # is exactly what happened (23 requests in a minute against a 15 RPM cap).
 PACING_DELAY_SECONDS = 5
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 SYSTEM_PROMPT = """You are writing for a fast-moving, well-read Telegram news channel called \
 MidWorld News. You will be given several headlines/posts and source names that a matching \
 system believes report on the same real-world event, pulled from outlets across the political \
 spectrum (left, right, wire services) and from independent/OSINT Telegram accounts and \
 official channels.
+
+When a candidate image is attached, verify it visibly depicts the specific
+story. Reject logos, text-only banners, unrelated advertisements, and generic
+news graphics; never treat an unclear image as relevant.
 
 CRITICAL FIRST CHECK: The matching system that grouped these headlines together is imperfect \
 and sometimes wrongly groups headlines about DIFFERENT events that just share similar words \
@@ -133,6 +139,59 @@ def _call_gemini(payload):
     raise last_error
 
 
+def _download_photo(url):
+    try:
+        with requests.get(url, timeout=20, stream=True) as response:
+            response.raise_for_status()
+            mime_type = (response.headers.get("content-type") or "").split(";")[0]
+            if not mime_type.startswith("image/"):
+                return None
+            chunks, size = [], 0
+            for chunk in response.iter_content(64 * 1024):
+                size += len(chunk)
+                if size > MAX_IMAGE_BYTES:
+                    logger.info("Skipping oversized candidate image: %s", url[:120])
+                    return None
+                chunks.append(chunk)
+            image = b"".join(chunks)
+            if image:
+                return {
+                    "mimeType": mime_type,
+                    "data": base64.b64encode(image).decode("ascii"),
+                }
+    except requests.RequestException as e:
+        logger.info("Could not download candidate image %s: %s", url[:120], e)
+    return None
+
+
+def _summary_result(cluster, user_content, image=None):
+    parts = [{"text": user_content}]
+    if image:
+        parts.append({"inlineData": image})
+    payload = {
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"parts": parts}],
+        "generationConfig": {"maxOutputTokens": 400, "temperature": 0.4},
+    }
+
+    try:
+        data = _call_gemini(payload)
+        result = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception as e:
+        logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
+        return None
+    finally:
+        time.sleep(PACING_DELAY_SECONDS)
+
+    if result == "NO_SINGLE_EVENT" or result.startswith("NO_SINGLE_EVENT"):
+        return None
+    lowered = result.lower()
+    if any(marker in lowered for marker in REFUSAL_MARKERS):
+        logger.warning("Detected leaked refusal/meta-commentary, discarding: %s", result[:150])
+        return None
+    return result
+
+
 def summarize_cluster(cluster, unverified=False):
     lines = []
     for i, m in enumerate(cluster["members"]):
@@ -151,6 +210,29 @@ def summarize_cluster(cluster, unverified=False):
             "rather than using a separate disclaimer label - simple attribution is enough."
         )
 
+    for candidate in cluster.get("photo_candidates", []):
+        url = candidate.get("url")
+        image = _download_photo(url) if url else None
+        if image is None:
+            continue
+        image_prompt = (
+            user_content
+            + "\n\nA candidate story image is attached. Decide whether it visibly "
+            "depicts this specific story. Reject generic news-network logos, "
+            "text-only banners, unrelated advertisements, and unrelated images. "
+            "On the first line output exactly IMAGE_RELEVANT: YES or "
+            "IMAGE_RELEVANT: NO. Then, only if YES, write the requested post."
+        )
+        visual_result = _summary_result(cluster, image_prompt, image)
+        if not visual_result:
+            continue
+        first_line, _, visual_summary = visual_result.partition("\n")
+        if (first_line.strip().upper() == "IMAGE_RELEVANT: YES"
+                and visual_summary.strip()):
+            return visual_summary.strip(), url
+        logger.info("Gemini rejected or could not verify candidate image: %s",
+                    url[:120])
+
     payload = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"parts": [{"text": user_content}]}],
@@ -162,7 +244,7 @@ def summarize_cluster(cluster, unverified=False):
         result = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
         logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
-        return None
+        return None, None
     finally:
         # Pace calls to stay under the free-tier RPM limit - matters a lot
         # more now that a single run can need many individual summarize
@@ -170,7 +252,7 @@ def summarize_cluster(cluster, unverified=False):
         time.sleep(PACING_DELAY_SECONDS)
 
     if result == "NO_SINGLE_EVENT" or result.startswith("NO_SINGLE_EVENT"):
-        return None
+        return None, None
 
     # Defense in depth: if the model ignored the sentinel instruction and
     # wrote free-form refusal/meta-commentary instead, catch it here rather
@@ -178,6 +260,6 @@ def summarize_cluster(cluster, unverified=False):
     lowered = result.lower()
     if any(marker in lowered for marker in REFUSAL_MARKERS):
         logger.warning("Detected leaked refusal/meta-commentary, discarding: %s", result[:150])
-        return None
+        return None, None
 
-    return result
+    return result, None

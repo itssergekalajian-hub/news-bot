@@ -5,7 +5,7 @@ import hashlib
 import re
 import time
 import logging
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import requests
@@ -24,7 +24,8 @@ VIDEO_EXT_RE = re.compile(r"\.(mp4|mov|m4v|webm)(\?|$)", re.IGNORECASE)
 # Tiny tracking pixels / spacers / feed-chrome icons we never want to post.
 _IMG_SKIP_RE = re.compile(
     r"(doubleclick|feedburner|feedsportal|gravatar|pixel|1x1|spacer|blank|"
-    r"avatar|logo|icon|button|badge|smiley|emoji)",
+    r"avatar|logo|icon|button|badge|smiley|emoji|default|placeholder|"
+    r"share[-_]card|breaking|banner|branding|thumb)",
     re.IGNORECASE,
 )
 
@@ -64,21 +65,27 @@ def _looks_like_video(url: str, mime: str = "") -> bool:
 
 
 def _usable_image(url: str) -> bool:
-    """Filters out obvious non-content images (tracking pixels, feed icons,
-    avatars) so we don't attach a 1x1 pixel or a site logo as the story photo."""
+    """Reject known generic cards, placeholders, logos, and tracking images."""
     if not url or not url.startswith("http"):
+        return False
+    host = (urlsplit(url).hostname or "").lower()
+    if host == "news.google.com" or host.endswith(".news.google.com"):
+        return False
+    if host == "googleusercontent.com" or host.endswith(".googleusercontent.com"):
         return False
     return not _IMG_SKIP_RE.search(url)
 
 
-def _fetch_article_details(url: str) -> tuple[str | None, str | None]:
-    """Return an article's OpenGraph image and first three body paragraphs."""
+def _fetch_article_details(
+        url: str) -> tuple[list[str], str | None]:
+    """Return verified hero image URLs and the first three body paragraphs."""
     if not url:
-        return None, None
+        return [], None
     if url in _ARTICLE_DETAILS_CACHE:
         return _ARTICLE_DETAILS_CACHE[url]
 
-    image_url = context = None
+    image_urls = []
+    context = None
     try:
         response = requests.get(
             url, headers=ARTICLE_REQUEST_HEADERS,
@@ -88,13 +95,34 @@ def _fetch_article_details(url: str) -> tuple[str | None, str | None]:
         logger.debug("Could not fetch article %s: %s", url, e)
     else:
         soup = BeautifulSoup(response.text, "html.parser")
-        for prop in ("og:image:secure_url", "og:image:url", "og:image"):
-            tag = soup.find("meta", property=prop)
+        dimensions = {}
+        for key in ("og:image:width", "og:image:height",
+                    "twitter:image:width", "twitter:image:height"):
+            tag = soup.find("meta", property=key) or soup.find(
+                "meta", attrs={"name": key})
+            if tag and tag.get("content"):
+                try:
+                    dimensions[key.rsplit(":", 1)[-1]] = int(tag["content"])
+                except ValueError:
+                    pass
+
+        for attrs in (
+                {"property": "og:image:secure_url"},
+                {"property": "og:image:url"},
+                {"property": "og:image"},
+                {"name": "twitter:image"},
+                {"name": "twitter:image:src"}):
+            tag = soup.find("meta", attrs=attrs)
             content = tag.get("content") if tag else None
             candidate = urljoin(response.url, content.strip()) if content else None
-            if _usable_image(candidate):
-                image_url = candidate
-                break
+            width = dimensions.get("width")
+            height = dimensions.get("height")
+            if (not _usable_image(candidate)
+                    or (width is not None and width < 400)
+                    or (height is not None and height < 250)):
+                continue
+            if candidate not in image_urls:
+                image_urls.append(candidate)
 
         body = soup.find("article") or soup.find("main") or soup
         paragraphs = []
@@ -107,8 +135,8 @@ def _fetch_article_details(url: str) -> tuple[str | None, str | None]:
         if paragraphs:
             context = "\n".join(paragraphs)
 
-    _ARTICLE_DETAILS_CACHE[url] = image_url, context
-    return image_url, context
+    _ARTICLE_DETAILS_CACHE[url] = image_urls, context
+    return image_urls, context
 
 
 def fetch_article_context(url: str) -> str | None:
@@ -116,39 +144,14 @@ def fetch_article_context(url: str) -> str | None:
     return _fetch_article_details(url)[1]
 
 
-def _img_from_html(html: str):
-    """Pulls the first usable <img> URL out of an HTML blob (an RSS feed's
-    content:encoded / summary / description body). Many feeds - Guardian,
-    NYT, Al Jazeera, Fox, WSJ and others - don't fill the media:* fields at
-    all and only embed the article photo as an <img> inside the description,
-    so without this pass those stories post with no image even though one
-    was right there in the feed."""
-    if not html:
-        return None
-    try:
-        soup = BeautifulSoup(html, "html.parser")
-    except Exception:
-        return None
-    for img in soup.find_all("img"):
-        url = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
-        if url and url.startswith("//"):
-            url = "https:" + url
-        if _usable_image(url):
-            return url
-    return None
-
-
 def _extract_rss_media(entry):
-    """Returns (media_url, media_type) or (None, None).
+    """Returns (media_url, media_type, photo_candidates).
 
-    Order of preference:
-      1. A direct video file from any media:content / enclosure entry.
-      2. A usable image from media:content / media:thumbnail / enclosure.
-      3. An <img> parsed out of the entry's HTML body (content / summary /
-         description) - the fallback that recovers images for the many feeds
-         that only embed the photo inline and never populate the media fields.
+    Direct videos are preserved; photo candidates are ordered as verified
+    OpenGraph/Twitter hero images followed by RSS media images.
     """
-    image_url = None
+    image_urls = []
+    video_url = None
 
     # media:content can be a list with several renditions (e.g. a poster
     # image AND a video); scan all of them, not just the first, so a video
@@ -157,11 +160,14 @@ def _extract_rss_media(entry):
         url = mc.get("url")
         if not url:
             continue
-        if _looks_like_video(url, mc.get("type", "")) or mc.get("medium") == "video":
+        if mc.get("medium") == "video" or _looks_like_video(
+                url, mc.get("type", "")):
             if _looks_like_video(url, mc.get("type", "")):
-                return url, "video"
-        if image_url is None and _usable_image(url):
-            image_url = url
+                video_url = video_url or url
+            continue
+        if (not _looks_like_video(url, mc.get("type", ""))
+                and _usable_image(url) and url not in image_urls):
+            image_urls.append(url)
 
     for enc in getattr(entry, "enclosures", None) or []:
         url = enc.get("href") or enc.get("url")
@@ -169,39 +175,25 @@ def _extract_rss_media(entry):
         if not url:
             continue
         if _looks_like_video(url, enc_type):
-            return url, "video"
-        if image_url is None and enc_type.startswith("image") and _usable_image(url):
-            image_url = url
+            video_url = video_url or url
+            continue
+        if enc_type.startswith("image") and _usable_image(url) and url not in image_urls:
+            image_urls.append(url)
 
-    if image_url is None:
-        for mt in getattr(entry, "media_thumbnail", None) or []:
-            url = mt.get("url")
-            if _usable_image(url):
-                image_url = url
-                break
-
-    og_image, _ = _fetch_article_details(
+    og_images, _ = _fetch_article_details(
         getattr(entry, "link", "") or "")
-    if og_image:
-        return og_image, "photo"
-    if image_url:
-        return image_url, "photo"
+    candidates = []
+    for url in og_images:
+        candidates.append({"url": url, "kind": "og"})
+    for url in image_urls:
+        if url not in og_images:
+            candidates.append({"url": url, "kind": "rss"})
 
-    # Last resort: dig an <img> out of the entry's HTML body.
-    html_blobs = []
-    for c in getattr(entry, "content", None) or []:
-        if c.get("value"):
-            html_blobs.append(c["value"])
-    for field in ("summary", "description"):
-        val = getattr(entry, field, None)
-        if val:
-            html_blobs.append(val)
-    for html in html_blobs:
-        url = _img_from_html(html)
-        if url:
-            return url, "photo"
-
-    return None, None
+    if video_url:
+        return video_url, "video", candidates
+    if candidates:
+        return candidates[0]["url"], "photo", candidates
+    return None, None, []
 
 
 def fetch_all_entries():
@@ -221,7 +213,7 @@ def fetch_all_entries():
                 link = getattr(entry, "link", "").strip()
                 if not title or not link:
                     continue
-                media_url, media_type = _extract_rss_media(entry)
+                media_url, media_type, photo_candidates = _extract_rss_media(entry)
                 all_entries.append({
                     "entry_id": _entry_id(src["name"], link, title),
                     "title": title,
@@ -231,6 +223,7 @@ def fetch_all_entries():
                     "published": _parse_published(entry),
                     "media_url": media_url,
                     "media_type": media_type,
+                    "photo_candidates": photo_candidates,
                 })
         except Exception as e:
             logger.warning("Failed to fetch %s: %s", src["name"], e)

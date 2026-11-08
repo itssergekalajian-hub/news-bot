@@ -6,6 +6,7 @@ Simple SQLite-backed storage for:
   3. Relevance-check caching - classify each cluster's topic only once
   4. Pending clusters - stories seen but not yet confirmed across sources
 """
+import json
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -56,7 +57,8 @@ class Storage:
                     published REAL NOT NULL,
                     cluster_key TEXT,
                     media_url TEXT,
-                    media_type TEXT
+                    media_type TEXT,
+                    photo_candidates TEXT NOT NULL DEFAULT '[]'
                 )
             """)
             entry_cols = [row[1] for row in conn.execute("PRAGMA table_info(seen_entries)").fetchall()]
@@ -64,6 +66,10 @@ class Storage:
                 conn.execute("ALTER TABLE seen_entries ADD COLUMN media_url TEXT")
             if "media_type" not in entry_cols:
                 conn.execute("ALTER TABLE seen_entries ADD COLUMN media_type TEXT")
+            if "photo_candidates" not in entry_cols:
+                conn.execute(
+                    "ALTER TABLE seen_entries ADD COLUMN photo_candidates TEXT NOT NULL DEFAULT '[]'"
+                )
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS sports_posted (
@@ -80,15 +86,15 @@ class Storage:
             return row is not None
 
     def add_entry(self, entry_id, title, link, source, lean, published, cluster_key,
-                  media_url=None, media_type=None):
+                  media_url=None, media_type=None, photo_candidates=None):
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR IGNORE INTO seen_entries
                    (entry_id, title, link, source, lean, published, cluster_key,
-                    media_url, media_type)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    media_url, media_type, photo_candidates)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (entry_id, title, link, source, lean, published, cluster_key,
-                 media_url, media_type),
+                 media_url, media_type, json.dumps(photo_candidates or [])),
             )
 
     def get_recent_entries(self, window_minutes: int):
@@ -96,7 +102,7 @@ class Storage:
         with self._conn() as conn:
             rows = conn.execute(
                 """SELECT entry_id, title, link, source, lean, published, cluster_key,
-                          media_url, media_type
+                          media_url, media_type, photo_candidates
                    FROM seen_entries WHERE published >= ?""",
                 (cutoff,),
             ).fetchall()

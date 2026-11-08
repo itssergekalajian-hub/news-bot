@@ -136,6 +136,10 @@ def _fetch_channel(name: str, username: str, lean: str):
             "published": published,
             "media_url": media_url,
             "media_type": media_type,
+            "photo_candidates": (
+                [{"url": media_url, "kind": "telegram"}]
+                if media_type == "photo" and media_url else []
+            ),
         })
 
     return entries

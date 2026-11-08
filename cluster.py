@@ -92,6 +92,25 @@ def cluster_entries(entries, similarity_threshold=None):
         # Pick a representative media item: prefer video, else first photo found
         cluster["media_url"] = None
         cluster["media_type"] = None
+        candidates = []
+        seen_candidate_urls = set()
+        for member in cluster["members"]:
+            member_candidates = member.get("photo_candidates") or []
+            if not member_candidates and member.get("media_type") == "photo":
+                member_candidates = [{
+                    "url": member.get("media_url"),
+                    "kind": ("telegram" if member.get("link", "").startswith(
+                        "https://t.me/") else "rss"),
+                }]
+            for candidate in member_candidates:
+                url = candidate.get("url")
+                if url and url not in seen_candidate_urls:
+                    candidates.append(candidate)
+                    seen_candidate_urls.add(url)
+        priority = {"telegram": 0, "og": 1, "rss": 2}
+        cluster["photo_candidates"] = sorted(
+            candidates, key=lambda candidate: priority.get(candidate.get("kind"), 3))
+
         video_member = next((m for m in cluster["members"] if m.get("media_type") == "video"), None)
         photo_member = next((m for m in cluster["members"] if m.get("media_type") == "photo"), None)
         chosen = video_member or photo_member

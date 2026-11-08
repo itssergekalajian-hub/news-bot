@@ -16,6 +16,7 @@ This script runs ONCE per invocation and exits. Continuous operation comes
 from a GitHub Actions workflow that triggers it on a cron schedule (see
 .github/workflows/news-bot.yml and README.md) - no server required.
 """
+import json
 import logging
 import sys
 
@@ -76,6 +77,7 @@ def run_once(store: Storage):
                 e["entry_id"], e["title"], e["link"],
                 e["source"], e["lean"], e["published"], None,
                 media_url=e.get("media_url"), media_type=e.get("media_type"),
+                photo_candidates=e.get("photo_candidates"),
             )
             new_count += 1
     logger.info("%d new entries stored", new_count)
@@ -86,6 +88,7 @@ def run_once(store: Storage):
             "entry_id": r[0], "title": r[1], "link": r[2],
             "source": r[3], "lean": r[4], "published": r[5],
             "media_url": r[7], "media_type": r[8],
+            "photo_candidates": json.loads(r[9] or "[]"),
         }
         for r in recent_rows
     ]
@@ -162,7 +165,8 @@ def run_once(store: Storage):
                      # relevant and get picked up on the next run instead
         try:
             unverified = needs_unverified_label(cluster)
-            summary = summarize_cluster(cluster, unverified=unverified)
+            summary, verified_photo = summarize_cluster(
+                cluster, unverified=unverified)
             if summary is None:
                 if allow_split_retry and len(cluster["members"]) > 1:
                     # The summarizer determined this cluster's headlines
@@ -211,7 +215,14 @@ def run_once(store: Storage):
                     if len(source_links) == 2:
                         break
 
-            media_url, media_type, fallback_image_url = upgrade_cluster_media(cluster)
+            if verified_photo:
+                media_url, media_type, fallback_image_url = (
+                    verified_photo, "photo", None)
+            else:
+                media_url, media_type, _ = upgrade_cluster_media(cluster)
+                if media_type != "video":
+                    media_url, media_type = None, None
+                fallback_image_url = None
             if not media_url and not fallback_image_url:
                 logger.info(
                     "No media found for: %s (member links: %s)",
@@ -226,6 +237,7 @@ def run_once(store: Storage):
                 media_url=media_url,
                 media_type=media_type,
                 fallback_image_url=fallback_image_url,
+                photo_verified=verified_photo is not None,
             )
             # Count media by how the post ACTUALLY went out, not merely by
             # whether a media URL was found - so a photo/video that fell back

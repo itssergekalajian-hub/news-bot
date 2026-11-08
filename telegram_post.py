@@ -162,7 +162,8 @@ def _try_send_media(endpoint: str, media_field: str, url: str, caption: str) -> 
 
 def post_to_channel(text: str, sources: list, media_url: str = None,
                     media_type: str = None, fallback_image_url: str = None,
-                    source_links: list[tuple[str, str]] | None = None):
+                    source_links: list[tuple[str, str]] | None = None,
+                    photo_verified: bool = False):
     """Post a story. Returns how it was ultimately sent: "video", "photo",
     or "text" (so callers can log accurate media stats). Raises only if even
     the plain-text send fails."""
@@ -175,11 +176,12 @@ def post_to_channel(text: str, sources: list, media_url: str = None,
     attempts = []
     if media_url and media_type == "video":
         attempts.append(("sendVideo", "video", media_url))
-        if fallback_image_url and fallback_image_url != media_url:
+        if (photo_verified and fallback_image_url
+                and fallback_image_url != media_url):
             attempts.append(("sendPhoto", "photo", fallback_image_url))
-    elif media_url and media_type == "photo":
+    elif media_url and media_type == "photo" and photo_verified:
         attempts.append(("sendPhoto", "photo", media_url))
-    elif fallback_image_url:
+    elif fallback_image_url and photo_verified:
         attempts.append(("sendPhoto", "photo", fallback_image_url))
 
     for endpoint, media_field, url in attempts:
