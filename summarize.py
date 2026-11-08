@@ -13,6 +13,8 @@ import time
 import logging
 import requests
 
+from fetcher import fetch_article_context
+
 logger = logging.getLogger("news_bot.summarize")
 
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
@@ -133,8 +135,12 @@ def _call_gemini(payload):
 
 def summarize_cluster(cluster, unverified=False):
     lines = []
-    for m in cluster["members"]:
+    for i, m in enumerate(cluster["members"]):
         lines.append(f"- [{m['source']}] {m['title']} ({m['link']})")
+        if i < 3:
+            context = fetch_article_context(m["link"])
+            if context:
+                lines.append(f"  Article text: {context}")
     user_content = "Headlines reporting the same event:\n" + "\n".join(lines)
 
     if unverified:

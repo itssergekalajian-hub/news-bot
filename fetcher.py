@@ -5,7 +5,10 @@ import hashlib
 import re
 import time
 import logging
+from urllib.parse import urljoin
+
 import feedparser
+import requests
 from bs4 import BeautifulSoup
 
 from config import SOURCES
@@ -33,6 +36,9 @@ FEED_REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
+ARTICLE_REQUEST_HEADERS = FEED_REQUEST_HEADERS
+ARTICLE_REQUEST_TIMEOUT = 8
+_ARTICLE_DETAILS_CACHE = {}
 
 
 def _entry_id(source_name: str, link: str, title: str) -> str:
@@ -63,6 +69,51 @@ def _usable_image(url: str) -> bool:
     if not url or not url.startswith("http"):
         return False
     return not _IMG_SKIP_RE.search(url)
+
+
+def _fetch_article_details(url: str) -> tuple[str | None, str | None]:
+    """Return an article's OpenGraph image and first three body paragraphs."""
+    if not url:
+        return None, None
+    if url in _ARTICLE_DETAILS_CACHE:
+        return _ARTICLE_DETAILS_CACHE[url]
+
+    image_url = context = None
+    try:
+        response = requests.get(
+            url, headers=ARTICLE_REQUEST_HEADERS,
+            timeout=ARTICLE_REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.debug("Could not fetch article %s: %s", url, e)
+    else:
+        soup = BeautifulSoup(response.text, "html.parser")
+        for prop in ("og:image:secure_url", "og:image:url", "og:image"):
+            tag = soup.find("meta", property=prop)
+            content = tag.get("content") if tag else None
+            candidate = urljoin(response.url, content.strip()) if content else None
+            if _usable_image(candidate):
+                image_url = candidate
+                break
+
+        body = soup.find("article") or soup.find("main") or soup
+        paragraphs = []
+        for paragraph in body.find_all("p"):
+            text = paragraph.get_text(" ", strip=True)
+            if text:
+                paragraphs.append(text)
+                if len(paragraphs) == 3:
+                    break
+        if paragraphs:
+            context = "\n".join(paragraphs)
+
+    _ARTICLE_DETAILS_CACHE[url] = image_url, context
+    return image_url, context
+
+
+def fetch_article_context(url: str) -> str | None:
+    """Fetch the first three substantive paragraphs from an article page."""
+    return _fetch_article_details(url)[1]
 
 
 def _img_from_html(html: str):
@@ -129,6 +180,10 @@ def _extract_rss_media(entry):
                 image_url = url
                 break
 
+    og_image, _ = _fetch_article_details(
+        getattr(entry, "link", "") or "")
+    if og_image:
+        return og_image, "photo"
     if image_url:
         return image_url, "photo"
 
