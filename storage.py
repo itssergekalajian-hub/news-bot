@@ -7,9 +7,36 @@ Simple SQLite-backed storage for:
   4. Pending clusters - stories seen but not yet confirmed across sources
 """
 import json
+import re
 import sqlite3
 import time
+from difflib import SequenceMatcher
 from contextlib import contextmanager
+
+
+_HEADLINE_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "by", "for", "from", "in", "into",
+    "is", "of", "on", "or", "the", "to", "with",
+}
+
+
+def normalize_headline(headline: str) -> str:
+    """Normalize headline text for cross-run event matching."""
+    text = re.sub(r"\[[^\]]+\]\([^)]*\)", " ", headline.casefold())
+    words = re.findall(r"[a-z0-9]+", text)
+    return " ".join(word for word in words if word not in _HEADLINE_STOPWORDS)
+
+
+def headlines_match(first: str, second: str) -> bool:
+    """Match normalized headlines by sequence similarity or keyword overlap."""
+    left = normalize_headline(first)
+    right = normalize_headline(second)
+    if not left or not right:
+        return False
+    if SequenceMatcher(None, left, right).ratio() >= 0.65:
+        return True
+    left_words, right_words = set(left.split()), set(right.split())
+    return (len(left_words & right_words) / len(left_words | right_words)) >= 0.65
 
 
 class Storage:
@@ -32,13 +59,17 @@ class Storage:
                 CREATE TABLE IF NOT EXISTS posted (
                     cluster_key TEXT PRIMARY KEY,
                     title TEXT NOT NULL DEFAULT '',
+                    normalized_headline TEXT NOT NULL DEFAULT '',
                     posted_at REAL NOT NULL
                 )
             """)
-            # Migrate older DBs that predate the title column
             cols = [row[1] for row in conn.execute("PRAGMA table_info(posted)").fetchall()]
             if "title" not in cols:
                 conn.execute("ALTER TABLE posted ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+            if "normalized_headline" not in cols:
+                conn.execute(
+                    "ALTER TABLE posted ADD COLUMN normalized_headline TEXT NOT NULL DEFAULT ''"
+                )
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS evaluated (
@@ -115,24 +146,36 @@ class Storage:
             ).fetchone()
             return row is not None
 
-    def mark_posted(self, cluster_key: str, title: str = ""):
+    def mark_posted(self, cluster_key: str, title: str = "",
+                    normalized_headline: str = ""):
         with self._conn() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO posted (cluster_key, title, posted_at) VALUES (?, ?, ?)",
-                (cluster_key, title, time.time()),
+                """INSERT OR IGNORE INTO posted
+                   (cluster_key, title, normalized_headline, posted_at)
+                   VALUES (?, ?, ?, ?)""",
+                (cluster_key, title,
+                 normalize_headline(normalized_headline or title), time.time()),
             )
 
-    def get_recent_posted_titles(self, limit: int = 30):
-        """Return the latest posted titles for near-duplicate checks."""
+    def get_recent_posted_titles(self, limit: int = 40):
+        """Return the latest normalized posted headlines for duplicate checks."""
         with self._conn() as conn:
             rows = conn.execute(
-                """SELECT title FROM posted
-                   WHERE title != ''
+                """SELECT COALESCE(NULLIF(normalized_headline, ''), title)
+                   FROM posted
+                   WHERE title != '' OR normalized_headline != ''
                    ORDER BY posted_at DESC
                    LIMIT ?""",
                 (limit,),
             ).fetchall()
         return [r[0] for r in rows]
+
+    def is_recent_headline_duplicate(self, headline: str,
+                                     recent_headlines: list[str] | None = None) -> bool:
+        """Check a headline against the latest 40 posted stories."""
+        candidates = (recent_headlines if recent_headlines is not None
+                      else self.get_recent_posted_titles(40))
+        return any(headlines_match(headline, previous) for previous in candidates)
 
     def is_evaluated(self, cluster_key: str):
         """Returns None if never evaluated, else True/False for relevance."""

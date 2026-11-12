@@ -9,12 +9,15 @@ free-tier cap on this account, while 3.5 Flash-Lite has 500/day - the model
 version choice was the bottleneck, not the account itself.
 """
 import base64
+import re
 import logging
 import os
 import time
+from urllib.parse import quote
 import requests
 
 from fetcher import fetch_article_context
+from cluster import topic_bucket
 
 logger = logging.getLogger("news_bot.summarize")
 
@@ -62,16 +65,14 @@ IMPORTANT: Always write your output in English, even if the source headlines \
 are in another language (Arabic, Russian, Persian, etc.) - translate the \
 substance into clear English rather than quoting or leaving any non-English text.
 
-Write a short, punchy Telegram post that:
-- Opens with ONE bolded headline-style line (wrap it in single asterisks, e.g. *Israel strikes \
-Tehran suburb*) that leads with the single most important fact - no throat-clearing. This is \
-MANDATORY for every single post, no exceptions - never start with plain unformatted text.
-- Follows with 2-4 sentences of clear, vivid, concrete writing (specific numbers, places, names) \
-- engaging and readable, not robotic, but every sentence must still be strictly factual with no \
-editorializing, no loaded language, and no adjectives implying judgment about who's right.
-- Add ONE relevant emoji at the very start of the headline line to signal the topic (e.g. 💥 \
-conflict/strikes, 🕊️ diplomacy/ceasefire, 📈📉 markets/finance, 🗳️ politics/elections, 🌍 general \
-world news) - exactly one, never more, never decorative-only. This is MANDATORY, never omit it.
+Write a short, punchy Telegram post containing only:
+- One plain-text headline on the first line, leading with the single most important fact.
+- Exactly 2 or 3 concise fact bullets, each on its own line and prefixed with "- ".
+- Make bullets concrete and useful, including verified numbers, places, and names when
+available. Preserve meaningful source disagreements by noting them in a bullet.
+- Every statement must be factual, with no editorializing or judgmental adjectives.
+- Do not add a category badge, emoji, bold markers, source footer, or other formatting;
+the system adds those consistently.
 - If sources meaningfully disagree on facts (not just tone), add one short line noting the \
 discrepancy and which outlets report which version - using ONLY the exact source names given to \
 you below, never any other name.
@@ -81,9 +82,7 @@ channel/account name - not even one that sounds plausible or that a headline's t
 mention in passing. If a headline's own text references some other outlet by name, do not repeat \
 that name as if it were one of your sources - only the bracketed [source] names given to you are \
 your actual sources.
-- NEVER write your own "Sources:" line, attribution footer, or citation list at the end of your \
-post - that is added automatically by the system after your text. Your output should end after \
-the last sentence of the write-up itself, with no source list of any kind.
+- NEVER write a source footer or citation list; the system adds one clickable source link.
 - If any source is an independent/OSINT account rather than a mainstream outlet, treat its \
 claims with the same "state what was reported, don't assert as fact beyond what's corroborated" \
 caution as any other source - do not give it more or less weight for being independent.
@@ -94,14 +93,10 @@ to Middle East Spectator, ..."). Do NOT use a separate disclaimer tag, label, or
 "Unverified:" or "Single source:" - simple in-sentence attribution IS the signal to the reader \
 that this is one account's claim, not confirmed by others. Keep it natural and readable, not \
 clinical.
-- Ends with a short "Why it matters" line only if genuinely non-obvious (otherwise omit it).
-- Use Telegram-style single-asterisk *bold* only for the opening headline - nothing else needs \
-formatting.
-- No hashtags. No clickbait phrasing ("You won't believe...", "Shocking:"). No more than one emoji \
-total in the whole post.
+- No hashtags or clickbait phrasing ("You won't believe...", "Shocking:").
 - Keep the whole post under roughly 600 characters so it reads well whether or not it's attached \
 to an image/video.
-- Output plain text only, ready to post as-is. No preamble like "Here is the summary."
+- Output plain text only, exactly as specified. No preamble like "Here is the summary."
 """
 
 REFUSAL_MARKERS = [
@@ -109,6 +104,89 @@ REFUSAL_MARKERS = [
     "completely unrelated events", "please resubmit", "please provide headlines",
     "i can only write one post", "different real-world events",
 ]
+
+_CATEGORY_BADGES = {
+    "finance": "📈 MARKETS",
+    "tech": "💻 TECHNOLOGY",
+    "us": "🏛️ POLICY",
+    "europe": "🏛️ POLICY",
+    "caucasus": "🌍 GEOPOLITICS",
+    "sports": "⚽ SPORTS",
+    "top": "🌍 GEOPOLITICS",
+    "general": "🌍 GEOPOLITICS",
+}
+_ENERGY_TERMS = {
+    "energy", "oil", "gas", "opec", "pipeline", "power grid", "electricity",
+    "lng", "crude", "refinery",
+}
+_POLICY_TERMS = {
+    "policy", "law", "bill", "parliament", "congress", "government", "minister",
+    "sanction", "tariff", "election", "court", "legislation", "regulation",
+}
+
+
+def _escape_markdown(text):
+    return re.sub(r"([_*`\[\]])", r"\\\1", text.strip())
+
+
+def _category_badge(cluster):
+    text = " ".join(
+        [cluster.get("title", "")]
+        + [member.get("title", "") for member in cluster.get("members", [])]
+    ).casefold()
+    if any(term in text for term in _ENERGY_TERMS):
+        return "⚡ ENERGY"
+    if topic_bucket(cluster) == "finance" or any(
+            term in text for term in ("market", "stocks", "shares", "trading", "economy")):
+        return "📈 MARKETS"
+    if any(term in text for term in _POLICY_TERMS):
+        return "🏛️ POLICY"
+    return _CATEGORY_BADGES.get(topic_bucket(cluster), "🌍 GEOPOLITICS")
+
+
+def _format_post(result, cluster):
+    lines = [line.strip() for line in result.splitlines() if line.strip()]
+    headline = lines[0] if lines else cluster.get("title", "")
+    headline = re.sub(r"^\*+|\*+$", "", headline).strip()
+    if headline.startswith("- "):
+        headline = cluster.get("title", "")
+        bullet_lines = lines
+    else:
+        bullet_lines = lines[1:]
+
+    bullets = []
+    for line in bullet_lines:
+        line = re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", line).strip()
+        if line:
+            bullets.append(line)
+    if not bullets:
+        prose = " ".join(bullet_lines)
+        bullets = [part.strip() for part in re.split(r"(?<=[.!?])\s+", prose) if part.strip()]
+    bullets = bullets[:3]
+    if len(bullets) < 2:
+        logger.warning("Discarding summary without at least two fact bullets: %s",
+                       cluster.get("title", "")[:80])
+        return None
+
+    members = sorted(
+        cluster.get("members", []),
+        key=lambda member: member.get("published", 0),
+        reverse=True,
+    )
+    source = next(
+        (member for member in members
+         if member.get("link", "").startswith(("http://", "https://"))),
+        None,
+    )
+    source_line = ""
+    if source:
+        source_url = quote(source["link"], safe=":/?&=#%+;,@!$'*-._~")
+        source_line = f"\n\n📰 [Source]({source_url})"
+    body = "\n".join(f"• {_escape_markdown(bullet)}" for bullet in bullets)
+    return (
+        f"{_category_badge(cluster)}\n*{_escape_markdown(headline)}*\n\n"
+        f"{body}{source_line}"
+    )
 
 
 def _call_gemini(payload):
@@ -229,7 +307,9 @@ def summarize_cluster(cluster, unverified=False):
         first_line, _, visual_summary = visual_result.partition("\n")
         if (first_line.strip().upper() == "IMAGE_RELEVANT: YES"
                 and visual_summary.strip()):
-            return visual_summary.strip(), url
+            formatted = _format_post(visual_summary.strip(), cluster)
+            if formatted:
+                return formatted, url
         logger.info("Gemini rejected or could not verify candidate image: %s",
                     url[:120])
 
@@ -262,4 +342,5 @@ def summarize_cluster(cluster, unverified=False):
         logger.warning("Detected leaked refusal/meta-commentary, discarding: %s", result[:150])
         return None, None
 
-    return result, None
+    formatted = _format_post(result, cluster)
+    return (formatted, None) if formatted else (None, None)

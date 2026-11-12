@@ -18,10 +18,12 @@ Media is attached as reliably as possible:
     story keeps as much media as possible and a bad asset never loses the
     post entirely.
 """
+from io import BytesIO
 import os
 import requests
 import logging
 from urllib.parse import quote
+from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger("news_bot.telegram")
 
@@ -46,6 +48,37 @@ DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
+
+
+def _prepare_photo(data: bytes):
+    """Validate an image and center-crop extreme aspect ratios to 16:9."""
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image.load()
+            width, height = image.size
+            if width < 500 or height < 280:
+                logger.info("Skipping small photo (%dx%d)", width, height)
+                return None
+
+            aspect = width / height
+            if aspect > 2.4 or aspect < 1 / 1.4:
+                target_aspect = 16 / 9
+                if aspect > target_aspect:
+                    crop_width = int(height * target_aspect)
+                    left = (width - crop_width) // 2
+                    bounds = (left, 0, left + crop_width, height)
+                else:
+                    crop_height = int(width / target_aspect)
+                    top = (height - crop_height) // 2
+                    bounds = (0, top, width, top + crop_height)
+                image = image.crop(bounds)
+
+            output = BytesIO()
+            image.convert("RGB").save(output, format="JPEG", quality=90, optimize=True)
+            return output.getvalue()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as e:
+        logger.info("Skipping invalid photo upload: %s", e)
+        return None
 
 
 def _build_footer(sources, source_links=None):
@@ -106,6 +139,11 @@ def _download_media(url: str, kind: str):
             data = b"".join(chunks)
             if not data:
                 return None
+            if kind == "photo":
+                prepared = _prepare_photo(data)
+                if prepared is None:
+                    return None
+                return prepared, "image/jpeg"
             return data, (content_type or want_prefix + "jpeg")
     except Exception as e:
         logger.info("Could not download %s for upload (%s): %s", kind, e, url[:120])
@@ -150,6 +188,10 @@ def _try_send_media(endpoint: str, media_field: str, url: str, caption: str) -> 
             return True
         except Exception as e:
             logger.warning("Uploading %s bytes failed (%s), trying send-by-URL", media_field, e)
+    elif media_field == "photo":
+        # A URL fallback would bypass the image validation performed on
+        # downloaded bytes, so invalid/unavailable photos degrade to text.
+        return False
 
     try:
         _send_media_by_url(endpoint, media_field, url, caption)
@@ -167,7 +209,8 @@ def post_to_channel(text: str, sources: list, media_url: str = None,
     """Post a story. Returns how it was ultimately sent: "video", "photo",
     or "text" (so callers can log accurate media stats). Raises only if even
     the plain-text send fails."""
-    full_text = text + _build_footer(sources, source_links)
+    has_compact_source = "\n\n📰 [Source](" in text
+    full_text = text if has_compact_source else text + _build_footer(sources, source_links)
     caption = full_text if len(full_text) <= CAPTION_LIMIT else text[:CAPTION_LIMIT - 3] + "..."
 
     # Ordered media attempts. A video is tried first, then a still image

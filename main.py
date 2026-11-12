@@ -18,10 +18,11 @@ from a GitHub Actions workflow that triggers it on a cron schedule (see
 """
 import json
 import logging
+import re
 import sys
 
 from config import DB_PATH, CLUSTER_WINDOW_MINUTES, MAX_POSTS_PER_RUN
-from storage import Storage
+from storage import Storage, normalize_headline
 from fetcher import fetch_all_entries
 from cluster import (
     cluster_entries, is_confirmed, is_high_impact_economic, is_near_duplicate,
@@ -38,6 +39,14 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("news_bot.main")
+
+
+def _posted_headline(summary: str, fallback: str) -> str:
+    for line in summary.splitlines():
+        match = re.fullmatch(r"\*(.+)\*", line.strip())
+        if match:
+            return match.group(1).replace("\\*", "*").strip()
+    return fallback
 
 
 # Order buckets so under-represented categories get a posting slot before the
@@ -96,7 +105,7 @@ def run_once(store: Storage):
     clusters = cluster_entries(recent_entries)
     logger.info("Formed %d clusters from %d recent entries", len(clusters), len(recent_entries))
 
-    recent_posted_titles = store.get_recent_posted_titles()
+    recent_posted_titles = store.get_recent_posted_titles(40)
 
     # --- Pass 1: figure out which clusters need a fresh classification
     # call, and which are already known to be posted, off-topic, or
@@ -109,7 +118,7 @@ def run_once(store: Storage):
             continue
         if store.is_posted(c["cluster_key"]):
             continue
-        if is_near_duplicate(c["title"], recent_posted_titles):
+        if store.is_recent_headline_duplicate(c["title"], recent_posted_titles):
             logger.info("Skipped (near-duplicate of recent post): %s", c["title"][:80])
             continue
 
@@ -189,7 +198,8 @@ def run_once(store: Storage):
                                 continue
                             if store.is_posted(sub["cluster_key"]):
                                 continue
-                            if is_near_duplicate(sub["title"], recent_posted_titles):
+                            if store.is_recent_headline_duplicate(
+                                    sub["title"], recent_posted_titles):
                                 continue
                             try_summarize_and_post(sub, allow_split_retry=False)
                     else:
@@ -199,7 +209,8 @@ def run_once(store: Storage):
                 return
 
             if is_high_impact_economic(cluster):
-                summary = f"🔴 High Impact {summary}"
+                badge, separator, story = summary.partition("\n")
+                summary = f"{badge} · 🔴 HIGH IMPACT{separator}{story}"
 
             source_links = []
             seen_sources = set()
@@ -244,9 +255,15 @@ def run_once(store: Storage):
             # to text is reported honestly as text-only.
             if sent_as in ("photo", "video"):
                 posted_with_media_count += 1
-            store.mark_posted(cluster["cluster_key"], title=cluster["title"])
-            recent_posted_titles.insert(0, cluster["title"])
-            del recent_posted_titles[30:]
+            normalized_headline = normalize_headline(
+                _posted_headline(summary, cluster["title"]))
+            store.mark_posted(
+                cluster["cluster_key"],
+                title=cluster["title"],
+                normalized_headline=normalized_headline,
+            )
+            recent_posted_titles.insert(0, normalized_headline)
+            del recent_posted_titles[40:]
             posted_this_run += 1
             logger.info("Posted: %s", cluster["title"][:80])
         except Exception as e:
