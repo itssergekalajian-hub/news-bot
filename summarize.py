@@ -22,9 +22,11 @@ from cluster import topic_bucket
 logger = logging.getLogger("news_bot.summarize")
 
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
-GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-3.5-flash-lite:generateContent"
+GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
 )
 
 MAX_RETRIES = 3
@@ -36,6 +38,10 @@ RETRY_BASE_DELAY_SECONDS = 6
 # is exactly what happened (23 requests in a minute against a 15 RPM cap).
 PACING_DELAY_SECONDS = 5
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+IMAGE_REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+}
 
 SYSTEM_PROMPT = """You are writing for a fast-moving, well-read Telegram news channel called \
 MidWorld News. You will be given several headlines/posts and source names that a matching \
@@ -189,37 +195,75 @@ def _format_post(result, cluster):
     )
 
 
-def _call_gemini(payload):
+def _call_gemini(payload, model=None):
     last_error = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.post(
-                GEMINI_URL,
-                params={"key": GOOGLE_API_KEY},
-                json=payload,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.HTTPError as e:
-            last_error = e
-            status = e.response.status_code if e.response is not None else None
-            if status in (404, 429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
-                continue
-            raise
-        except Exception as e:
-            last_error = e
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
-                continue
-            raise
+    models = (model,) if model else GEMINI_MODELS
+    for model_name in models:
+        model_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.post(
+                    f"{GEMINI_ROOT}/{model_name}:generateContent",
+                    params={"key": GOOGLE_API_KEY},
+                    json=payload,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except requests.exceptions.HTTPError as exc:
+                model_error = last_error = exc
+                status = (exc.response.status_code
+                          if exc.response is not None else None)
+                if status in (429, 500, 502, 503) and attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                    continue
+                break
+            except requests.exceptions.RequestException as exc:
+                model_error = last_error = exc
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                    continue
+                break
+            except ValueError as exc:
+                model_error = last_error = exc
+                break
+        logger.warning("Gemini model %s failed: %s", model_name, model_error)
     raise last_error
+
+
+def _response_text(data):
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    visible = [
+        part["text"].strip()
+        for part in parts
+        if not part.get("thought")
+        and isinstance(part.get("text"), str)
+        and part["text"].strip()
+    ]
+    return "\n".join(visible)
+
+
+def _has_two_fact_bullets(result):
+    lines = result.splitlines()
+    if lines and lines[0].strip().upper().startswith("IMAGE_RELEVANT:"):
+        if lines[0].strip().upper() != "IMAGE_RELEVANT: YES":
+            return True
+        lines = lines[1:]
+    if lines:
+        lines = lines[1:]  # The first remaining line is the post headline.
+    return sum(
+        bool(re.match(r"^\s*(?:[-*•]|\d+[.)])\s+\S", line))
+        for line in lines
+    ) >= 2
 
 
 def _download_photo(url):
     try:
-        with requests.get(url, timeout=20, stream=True) as response:
+        with requests.get(url, headers=IMAGE_REQUEST_HEADERS,
+                          timeout=20, stream=True) as response:
             response.raise_for_status()
             mime_type = (response.headers.get("content-type") or "").split(";")[0]
             if not mime_type.startswith("image/"):
@@ -253,8 +297,40 @@ def _summary_result(cluster, user_content, image=None):
     }
 
     try:
-        data = _call_gemini(payload)
-        result = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        result = ""
+        for model in GEMINI_MODELS:
+            model_result = ""
+            for attempt in range(2):
+                try:
+                    data = _call_gemini(payload, model=model)
+                except Exception as exc:
+                    logger.warning("Gemini model %s failed for '%s': %s",
+                                   model, cluster["title"][:60], exc)
+                    break
+                model_result = _response_text(data)
+                if (not model_result
+                        or model_result == "NO_SINGLE_EVENT"
+                        or model_result.startswith("NO_SINGLE_EVENT")):
+                    if model_result:
+                        result = model_result
+                    elif attempt == 0:
+                        continue
+                    break
+                first_line = model_result.splitlines()[0].strip().upper()
+                if (first_line == "IMAGE_RELEVANT: NO"
+                        or _has_two_fact_bullets(model_result)):
+                    result = model_result
+                    break
+                if attempt == 0:
+                    logger.info(
+                        "Gemini model %s returned fewer than two fact bullets "
+                        "for '%s'; retrying",
+                        model, cluster["title"][:60],
+                    )
+            if result:
+                break
+        if not result:
+            raise ValueError("Gemini models returned no usable text")
     except Exception as e:
         logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
         return None
@@ -313,23 +389,9 @@ def summarize_cluster(cluster, unverified=False):
         logger.info("Gemini rejected or could not verify candidate image: %s",
                     url[:120])
 
-    payload = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": [{"parts": [{"text": user_content}]}],
-        "generationConfig": {"maxOutputTokens": 400, "temperature": 0.4},
-    }
-
-    try:
-        data = _call_gemini(payload)
-        result = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        logger.error("Summarization call failed for '%s': %s", cluster["title"][:60], e)
+    result = _summary_result(cluster, user_content)
+    if not result:
         return None, None
-    finally:
-        # Pace calls to stay under the free-tier RPM limit - matters a lot
-        # more now that a single run can need many individual summarize
-        # calls (one per post, not batched like classification is).
-        time.sleep(PACING_DELAY_SECONDS)
 
     if result == "NO_SINGLE_EVENT" or result.startswith("NO_SINGLE_EVENT"):
         return None, None

@@ -24,13 +24,12 @@ WAR_OSINT_SINGLE_SOURCE_LEANS = {
     "osint_isw", "osint_bno", "osint_faytuks", "osint_clashreport",
     "osint_megatron", "osint_alibk", "osint_wartranslated",
     "osint_intelslava", "osint_thecradle", "osint_warfareanalysis",
-    # Official heads-of-state / leadership channels (Trump, Netanyahu via
-    # il_source, Khamenei via ir_source, Putin via ru_source). Allowed to
+    # Official heads-of-state / leadership channels (Khamenei via ir_source,
+    # Putin via ru_source). Allowed to
     # post alone because a leader's own statement is itself the news - but,
     # exactly like the state-media leans above, needs_unverified_label()
     # flags them as single-source so the summarizer never presents an
     # official account's claim as independently confirmed fact.
-    "us_source",
 }
 
 _HIGH_IMPACT_ECONOMIC_RE = re.compile(r"\b(?:CPI|NFP|FOMC)\b", re.IGNORECASE)
@@ -148,7 +147,7 @@ def is_confirmed(cluster) -> bool:
 # floods every run) doesn't fill all the slots and starve finance, US/EU
 # politics, tech, etc. Bucketing is by source lean: the specialized leans
 # below mark their category; everything else falls to "general".
-_US_LEANS = {"us_source", "us_center", "us_media"}
+_US_LEANS = {"us_center", "us_media"}
 _EUROPE_LEANS = {"eu_media", "eu_center"}
 _CAUCASUS_LEANS = {"am_state", "am_media", "az_state", "az_media"}
 

@@ -28,6 +28,10 @@ _IMG_SKIP_RE = re.compile(
     r"share[-_]card|breaking|banner|branding|thumb)",
     re.IGNORECASE,
 )
+_IMG_SKIP_RE_WITHOUT_THUMB = re.compile(
+    _IMG_SKIP_RE.pattern.replace("|thumb", ""),
+    re.IGNORECASE,
+)
 
 # Some sites return a bot-challenge/error page (not the real feed) to
 # requests that don't look like a browser, which then fails XML parsing
@@ -35,10 +39,20 @@ _IMG_SKIP_RE = re.compile(
 # look like a broken feed but are actually a blocked request.
 FEED_REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 }
-ARTICLE_REQUEST_HEADERS = FEED_REQUEST_HEADERS
+ARTICLE_REQUEST_HEADERS = {
+    "User-Agent": FEED_REQUEST_HEADERS["User-Agent"],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": FEED_REQUEST_HEADERS["Accept-Language"],
+}
 ARTICLE_REQUEST_TIMEOUT = 8
+FEED_REQUEST_TIMEOUT = 12
+FEED_SESSION = requests.Session()
+FEED_SESSION.headers.update(FEED_REQUEST_HEADERS)
+_CHALLENGED_FEEDS_LOGGED = set()
 _ARTICLE_DETAILS_CACHE = {}
 
 
@@ -64,7 +78,7 @@ def _looks_like_video(url: str, mime: str = "") -> bool:
     return bool(url and VIDEO_EXT_RE.search(url))
 
 
-def _usable_image(url: str) -> bool:
+def _usable_image(url: str, allow_thumbnail: bool = False) -> bool:
     """Reject known generic cards, placeholders, logos, and tracking images."""
     if not url or not url.startswith("http"):
         return False
@@ -73,7 +87,8 @@ def _usable_image(url: str) -> bool:
         return False
     if host == "googleusercontent.com" or host.endswith(".googleusercontent.com"):
         return False
-    return not _IMG_SKIP_RE.search(url)
+    skip_re = _IMG_SKIP_RE_WITHOUT_THUMB if allow_thumbnail else _IMG_SKIP_RE
+    return not skip_re.search(url)
 
 
 def _fetch_article_details(
@@ -147,8 +162,8 @@ def fetch_article_context(url: str) -> str | None:
 def _extract_rss_media(entry):
     """Returns (media_url, media_type, photo_candidates).
 
-    Direct videos are preserved; photo candidates are ordered as verified
-    OpenGraph/Twitter hero images followed by RSS media images.
+    Direct RSS media is collected before attempting article-page scraping, so
+    feeds with their own image still work when the publisher blocks HTML fetches.
     """
     image_urls = []
     video_url = None
@@ -169,6 +184,11 @@ def _extract_rss_media(entry):
                 and _usable_image(url) and url not in image_urls):
             image_urls.append(url)
 
+    for thumbnail in getattr(entry, "media_thumbnail", None) or []:
+        url = thumbnail.get("url")
+        if url and _usable_image(url, allow_thumbnail=True) and url not in image_urls:
+            image_urls.append(url)
+
     for enc in getattr(entry, "enclosures", None) or []:
         url = enc.get("href") or enc.get("url")
         enc_type = enc.get("type", "")
@@ -177,23 +197,55 @@ def _extract_rss_media(entry):
         if _looks_like_video(url, enc_type):
             video_url = video_url or url
             continue
-        if enc_type.startswith("image") and _usable_image(url) and url not in image_urls:
+        if ((enc_type.startswith("image") or _looks_like_image_url(url))
+                and _usable_image(url) and url not in image_urls):
             image_urls.append(url)
 
+    content_values = []
+    summary = getattr(entry, "summary", None)
+    if isinstance(summary, str):
+        content_values.append(summary)
+    for content in getattr(entry, "content", None) or []:
+        value = content.get("value")
+        if isinstance(value, str):
+            content_values.append(value)
+    article_url = getattr(entry, "link", "") or ""
+    for value in content_values:
+        soup = BeautifulSoup(value, "html.parser")
+        for image in soup.find_all("img", src=True):
+            url = urljoin(article_url, image["src"].strip())
+            if _usable_image(url) and url not in image_urls:
+                image_urls.append(url)
+
     og_images, _ = _fetch_article_details(
-        getattr(entry, "link", "") or "")
+        article_url)
     candidates = []
-    for url in og_images:
-        candidates.append({"url": url, "kind": "og"})
     for url in image_urls:
-        if url not in og_images:
-            candidates.append({"url": url, "kind": "rss"})
+        candidates.append({"url": url, "kind": "rss"})
+    for url in og_images:
+        if url not in image_urls:
+            candidates.append({"url": url, "kind": "og"})
 
     if video_url:
         return video_url, "video", candidates
     if candidates:
         return candidates[0]["url"], "photo", candidates
     return None, None, []
+
+
+_IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif)(?:\?|$)", re.IGNORECASE)
+
+
+def _looks_like_image_url(url: str) -> bool:
+    return bool(url and _IMAGE_EXT_RE.search(url))
+
+
+def _sanitize_feed_xml(raw_bytes: bytes) -> bytes:
+    return re.sub(
+        rb'&(?!#[0-9]+;|#x[0-9a-fA-F]+;|[a-zA-Z][a-zA-Z0-9]*;)',
+        b'&amp;',
+        raw_bytes,
+    )
 
 
 def fetch_all_entries():
@@ -204,10 +256,28 @@ def fetch_all_entries():
     all_entries = []
     for src in SOURCES:
         try:
-            feed = feedparser.parse(src["url"], request_headers=FEED_REQUEST_HEADERS)
+            response = FEED_SESSION.get(
+                src["url"], timeout=FEED_REQUEST_TIMEOUT)
+            raw_bytes = response.content
+            if raw_bytes.lstrip(b"\xef\xbb\xbf \t\r\n").lower().startswith(
+                    (b"<!doctype html", b"<html")):
+                if src["url"] not in _CHALLENGED_FEEDS_LOGGED:
+                    logger.warning(
+                        "RSS feed %s returned an HTML challenge page; skipping",
+                        src["name"],
+                    )
+                    _CHALLENGED_FEEDS_LOGGED.add(src["url"])
+                continue
+            response.raise_for_status()
+            feed = feedparser.parse(_sanitize_feed_xml(raw_bytes))
             if feed.bozo and not feed.entries:
                 logger.warning("Feed error for %s: %s", src["name"], feed.bozo_exception)
                 continue
+            if feed.bozo:
+                logger.info(
+                    "Partially parsed RSS feed %s (%d entries): %s",
+                    src["name"], len(feed.entries), feed.bozo_exception,
+                )
             for entry in feed.entries:
                 title = getattr(entry, "title", "").strip()
                 link = getattr(entry, "link", "").strip()

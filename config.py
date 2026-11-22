@@ -65,7 +65,7 @@ SOURCES = [
     {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "lean": "finance_wire"},
     {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "lean": "finance_wire"},
     {"name": "Kitco News", "url": "https://www.kitco.com/news/category/mining/rss", "lean": "finance_wire"},
-    {"name": "MarketWatch", "url": "https://feeds.marketwatch.com/marketwatch/topstories/", "lean": "finance_wire"},
+    {"name": "MarketWatch", "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories", "lean": "finance_wire"},
     {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "lean": "finance_wire"},
     {"name": "CNBC Economy", "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html", "lean": "finance_wire"},
 
@@ -218,16 +218,10 @@ TELEGRAM_SOURCES = [
     # (news_kremlin_eng), so he's not duplicated here. "Khamenei" is the
     # current Iranian Supreme Leader (Ayatollah Khomeini died in 1989);
     # khamenei_ir is his official English channel, sharing the ir_source
-    # lean with Press TV/IRNA (one Iranian-state voice). Netanyahu shares
-    # il_source with the IDF (one Israeli-government voice). Trump gets a new
-    # us_source lean.
+    # lean with Press TV/IRNA (one Iranian-state voice).
     #
-    # These t.me usernames are best-known official handles but couldn't be
-    # verified from the build sandbox (t.me is blocked here). A wrong handle
-    # simply fetches nothing (it never crashes the run); if any of these
-    # stops appearing, the exact @username is the one thing to correct.
-    {"name": "Donald Trump (official)", "username": "realDonaldTrump", "lean": "us_source"},
-    {"name": "Benjamin Netanyahu (official)", "username": "netanyahu", "lean": "il_source"},
+    # Public preview handles that consistently returned no posts
+    # (realDonaldTrump and netanyahu) are intentionally disabled.
     {"name": "Ali Khamenei (official)", "username": "khamenei_ir", "lean": "ir_source"},
 ]
 

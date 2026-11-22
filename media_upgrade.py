@@ -19,6 +19,7 @@ that actually end up posting, not every entry pulled from every source.
 """
 import logging
 import re
+from urllib.parse import urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -29,6 +30,12 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
+_IMG_SKIP_RE = re.compile(
+    r"(doubleclick|feedburner|feedsportal|gravatar|pixel|1x1|spacer|blank|"
+    r"avatar|logo|icon|button|badge|smiley|emoji|default|placeholder|"
+    r"share[-_]card|breaking|banner|branding|thumb)",
+    re.IGNORECASE,
+)
 
 MAX_LINKS_TO_TRY = 3
 
@@ -51,6 +58,17 @@ def _is_direct_video(url: str) -> bool:
     if _EMBED_HOST_RE.search(url):
         return False
     return bool(VIDEO_EXT_RE.search(url))
+
+
+def _usable_image(url: str | None) -> bool:
+    if not url or not url.startswith("http") or _IMG_SKIP_RE.search(url):
+        return False
+    host = (urlsplit(url).hostname or "").lower()
+    if (host == "news.google.com" or host.endswith(".news.google.com")
+            or host == "googleusercontent.com"
+            or host.endswith(".googleusercontent.com")):
+        return False
+    return True
 
 
 def fetch_og_media(url: str, timeout: int = 10):
@@ -88,7 +106,7 @@ def fetch_og_media(url: str, timeout: int = 10):
         logger.info("Ignoring non-file og:video (embed/player) on %s: %s", url, raw_video)
 
     image_url = meta_content("og:image:secure_url") or meta_content("og:image")
-    if not (image_url and image_url.startswith("http")):
+    if not _usable_image(image_url):
         image_url = None
 
     return video_url, image_url

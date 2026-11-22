@@ -56,7 +56,7 @@ def _prepare_photo(data: bytes):
         with Image.open(BytesIO(data)) as image:
             image.load()
             width, height = image.size
-            if width < 500 or height < 280:
+            if width < 440 or height < 240:
                 logger.info("Skipping small photo (%dx%d)", width, height)
                 return None
 
