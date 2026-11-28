@@ -89,7 +89,8 @@ class Storage:
                     cluster_key TEXT,
                     media_url TEXT,
                     media_type TEXT,
-                    photo_candidates TEXT NOT NULL DEFAULT '[]'
+                    photo_candidates TEXT NOT NULL DEFAULT '[]',
+                    publisher_url TEXT NOT NULL DEFAULT ''
                 )
             """)
             entry_cols = [row[1] for row in conn.execute("PRAGMA table_info(seen_entries)").fetchall()]
@@ -100,6 +101,10 @@ class Storage:
             if "photo_candidates" not in entry_cols:
                 conn.execute(
                     "ALTER TABLE seen_entries ADD COLUMN photo_candidates TEXT NOT NULL DEFAULT '[]'"
+                )
+            if "publisher_url" not in entry_cols:
+                conn.execute(
+                    "ALTER TABLE seen_entries ADD COLUMN publisher_url TEXT NOT NULL DEFAULT ''"
                 )
 
             conn.execute("""
@@ -117,15 +122,17 @@ class Storage:
             return row is not None
 
     def add_entry(self, entry_id, title, link, source, lean, published, cluster_key,
-                  media_url=None, media_type=None, photo_candidates=None):
+                  media_url=None, media_type=None, photo_candidates=None,
+                  publisher_url=""):
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR IGNORE INTO seen_entries
                    (entry_id, title, link, source, lean, published, cluster_key,
-                    media_url, media_type, photo_candidates)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    media_url, media_type, photo_candidates, publisher_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (entry_id, title, link, source, lean, published, cluster_key,
-                 media_url, media_type, json.dumps(photo_candidates or [])),
+                 media_url, media_type, json.dumps(photo_candidates or []),
+                 publisher_url),
             )
 
     def get_recent_entries(self, window_minutes: int):
@@ -133,7 +140,7 @@ class Storage:
         with self._conn() as conn:
             rows = conn.execute(
                 """SELECT entry_id, title, link, source, lean, published, cluster_key,
-                          media_url, media_type, photo_candidates
+                          media_url, media_type, photo_candidates, publisher_url
                    FROM seen_entries WHERE published >= ?""",
                 (cutoff,),
             ).fetchall()

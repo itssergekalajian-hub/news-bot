@@ -9,12 +9,15 @@ free-tier cap on this account, while 3.5 Flash-Lite has 500/day - the model
 version choice was the bottleneck, not the account itself.
 """
 import base64
+from io import BytesIO
 import re
 import logging
 import os
+import threading
 import time
 from urllib.parse import quote
 import requests
+from PIL import Image
 
 from fetcher import fetch_article_context
 from cluster import topic_bucket
@@ -37,6 +40,9 @@ RETRY_BASE_DELAY_SECONDS = 6
 # with zero pacing that alone blows past the free tier's RPM limit, which
 # is exactly what happened (23 requests in a minute against a 15 RPM cap).
 PACING_DELAY_SECONDS = 5
+GEMINI_REQUEST_INTERVAL_SECONDS = 4.1
+_GEMINI_RATE_LOCK = threading.Lock()
+_NEXT_GEMINI_REQUEST = 0.0
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 IMAGE_REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -196,12 +202,19 @@ def _format_post(result, cluster):
 
 
 def _call_gemini(payload, model=None):
+    global _NEXT_GEMINI_REQUEST
     last_error = None
     models = (model,) if model else GEMINI_MODELS
     for model_name in models:
         model_error = None
         for attempt in range(MAX_RETRIES):
             try:
+                with _GEMINI_RATE_LOCK:
+                    wait = _NEXT_GEMINI_REQUEST - time.monotonic()
+                    if wait > 0:
+                        time.sleep(wait)
+                    _NEXT_GEMINI_REQUEST = (
+                        time.monotonic() + GEMINI_REQUEST_INTERVAL_SECONDS)
                 resp = requests.post(
                     f"{GEMINI_ROOT}/{model_name}:generateContent",
                     params={"key": GOOGLE_API_KEY},
@@ -277,9 +290,15 @@ def _download_photo(url):
                 chunks.append(chunk)
             image = b"".join(chunks)
             if image:
+                try:
+                    with Image.open(BytesIO(image)) as decoded:
+                        width, height = decoded.size
+                except (OSError, ValueError):
+                    return None
                 return {
                     "mimeType": mime_type,
                     "data": base64.b64encode(image).decode("ascii"),
+                    "dimensions": (width, height),
                 }
     except requests.RequestException as e:
         logger.info("Could not download candidate image %s: %s", url[:120], e)
@@ -289,7 +308,12 @@ def _download_photo(url):
 def _summary_result(cluster, user_content, image=None):
     parts = [{"text": user_content}]
     if image:
-        parts.append({"inlineData": image})
+        parts.append({
+            "inlineData": {
+                "mimeType": image["mimeType"],
+                "data": image["data"],
+            },
+        })
     payload = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"parts": parts}],
@@ -351,7 +375,8 @@ def summarize_cluster(cluster, unverified=False):
     for i, m in enumerate(cluster["members"]):
         lines.append(f"- [{m['source']}] {m['title']} ({m['link']})")
         if i < 3:
-            context = fetch_article_context(m["link"])
+            context = fetch_article_context(
+                m["link"], m.get("publisher_url", ""))
             if context:
                 lines.append(f"  Article text: {context}")
     user_content = "Headlines reporting the same event:\n" + "\n".join(lines)
@@ -364,11 +389,19 @@ def summarize_cluster(cluster, unverified=False):
             "rather than using a separate disclaimer label - simple attribution is enough."
         )
 
+    trusted_rss_photo = None
     for candidate in cluster.get("photo_candidates", []):
         url = candidate.get("url")
         image = _download_photo(url) if url else None
         if image is None:
             continue
+        is_high_res_rss = (
+            candidate.get("kind") == "rss"
+            and image.get("dimensions", (0, 0))[0] >= 440
+            and image.get("dimensions", (0, 0))[1] >= 240
+        )
+        if is_high_res_rss and trusted_rss_photo is None:
+            trusted_rss_photo = url
         image_prompt = (
             user_content
             + "\n\nA candidate story image is attached. Decide whether it visibly "
@@ -378,14 +411,20 @@ def summarize_cluster(cluster, unverified=False):
             "IMAGE_RELEVANT: NO. Then, only if YES, write the requested post."
         )
         visual_result = _summary_result(cluster, image_prompt, image)
-        if not visual_result:
+        first_line, _, visual_summary = (visual_result or "").partition("\n")
+        relevance = first_line.strip().upper()
+        if relevance.startswith("IMAGE_RELEVANT: NO"):
+            logger.info("Gemini rejected candidate image as irrelevant: %s",
+                        url[:120])
+            if trusted_rss_photo == url:
+                trusted_rss_photo = None
             continue
-        first_line, _, visual_summary = visual_result.partition("\n")
-        if (first_line.strip().upper() == "IMAGE_RELEVANT: YES"
-                and visual_summary.strip()):
+        if relevance == "IMAGE_RELEVANT: YES" and visual_summary.strip():
             formatted = _format_post(visual_summary.strip(), cluster)
             if formatted:
                 return formatted, url
+        if not visual_result:
+            continue
         logger.info("Gemini rejected or could not verify candidate image: %s",
                     url[:120])
 
@@ -405,4 +444,6 @@ def summarize_cluster(cluster, unverified=False):
         return None, None
 
     formatted = _format_post(result, cluster)
-    return (formatted, None) if formatted else (None, None)
+    if not formatted:
+        return None, None
+    return formatted, trusted_rss_photo

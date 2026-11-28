@@ -20,10 +20,11 @@ import json
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 from config import DB_PATH, CLUSTER_WINDOW_MINUTES, MAX_POSTS_PER_RUN
 from storage import Storage, normalize_headline
-from fetcher import fetch_all_entries
+from fetcher import fetch_all_entries, resolve_cluster_article_links
 from cluster import (
     cluster_entries, is_confirmed, is_high_impact_economic, is_near_duplicate,
     needs_unverified_label, topic_bucket,
@@ -75,6 +76,29 @@ def _diversify_by_topic(clusters: list) -> list:
     return ordered
 
 
+def _enrich_cluster(cluster: dict):
+    resolve_cluster_article_links(cluster)
+    summary, verified_photo = summarize_cluster(
+        cluster, unverified=needs_unverified_label(cluster))
+    media = (upgrade_cluster_media(cluster)
+             if summary and not verified_photo else None)
+    return summary, verified_photo, media
+
+
+def _enrich_clusters(clusters: list[dict]):
+    """Enrich a selected batch concurrently while keeping SQLite work serial."""
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(_enrich_cluster, cluster)
+                   for cluster in clusters]
+        results = []
+        for cluster, future in zip(clusters, futures):
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                results.append(exc)
+        return results
+
+
 def run_once(store: Storage):
     new_entries = fetch_all_entries()
     logger.info("Fetched %d entries from sources", len(new_entries))
@@ -87,6 +111,7 @@ def run_once(store: Storage):
                 e["source"], e["lean"], e["published"], None,
                 media_url=e.get("media_url"), media_type=e.get("media_type"),
                 photo_candidates=e.get("photo_candidates"),
+                publisher_url=e.get("publisher_url", ""),
             )
             new_count += 1
     logger.info("%d new entries stored", new_count)
@@ -98,6 +123,7 @@ def run_once(store: Storage):
             "source": r[3], "lean": r[4], "published": r[5],
             "media_url": r[7], "media_type": r[8],
             "photo_candidates": json.loads(r[9] or "[]"),
+            "publisher_url": r[10] if len(r) > 10 else "",
         }
         for r in recent_rows
     ]
@@ -167,15 +193,14 @@ def run_once(store: Storage):
     posted_this_run = 0
     posted_with_media_count = 0
 
-    def try_summarize_and_post(cluster, allow_split_retry=True):
+    def try_summarize_and_post(cluster, allow_split_retry=True, enriched=None):
         nonlocal posted_this_run, posted_with_media_count
         if posted_this_run >= MAX_POSTS_PER_RUN:
             return  # cap reached - remaining candidates stay cached as
                      # relevant and get picked up on the next run instead
         try:
-            unverified = needs_unverified_label(cluster)
-            summary, verified_photo = summarize_cluster(
-                cluster, unverified=unverified)
+            summary, verified_photo, upgraded_media = (
+                enriched if enriched is not None else _enrich_cluster(cluster))
             if summary is None:
                 if allow_split_retry and len(cluster["members"]) > 1:
                     # The summarizer determined this cluster's headlines
@@ -230,10 +255,10 @@ def run_once(store: Storage):
                 media_url, media_type, fallback_image_url = (
                     verified_photo, "photo", None)
             else:
-                media_url, media_type, _ = upgrade_cluster_media(cluster)
+                media_url, media_type, fallback_image_url = (
+                    upgraded_media or (None, None, None))
                 if media_type != "video":
                     media_url, media_type = None, None
-                fallback_image_url = None
             if not media_url and not fallback_image_url:
                 logger.info(
                     "No media found for: %s (member links: %s)",
@@ -273,14 +298,25 @@ def run_once(store: Storage):
     # instead of letting the high-volume Middle East / war bucket take every
     # slot - that starvation is why finance and US/EU politics were rarely
     # showing up. Anything past the per-run cap stays cached for the next run.
-    for c in _diversify_by_topic(ready_to_post):
+    ordered_ready = _diversify_by_topic(ready_to_post)
+    batch_size = max(1, MAX_POSTS_PER_RUN)
+    for offset in range(0, len(ordered_ready), batch_size):
         if posted_this_run >= MAX_POSTS_PER_RUN:
             logger.info(
                 "Reached MAX_POSTS_PER_RUN (%d) - remaining candidates will be picked up next run.",
                 MAX_POSTS_PER_RUN,
             )
             break
-        try_summarize_and_post(c)
+        batch = ordered_ready[offset:offset + batch_size]
+        enrichments = _enrich_clusters(batch)
+        for cluster, enrichment in zip(batch, enrichments):
+            if posted_this_run >= MAX_POSTS_PER_RUN:
+                break
+            if isinstance(enrichment, Exception):
+                logger.error("Failed to enrich cluster '%s': %s",
+                             cluster["title"][:80], enrichment)
+                continue
+            try_summarize_and_post(cluster, enriched=enrichment)
 
     logger.info(
         "Run complete. Posted %d new stories (%d with media, %d text-only).",

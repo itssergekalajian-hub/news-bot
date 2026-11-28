@@ -1,6 +1,7 @@
 """
 Fetches entries from all configured RSS sources.
 """
+import base64
 import hashlib
 import re
 import time
@@ -54,6 +55,143 @@ FEED_SESSION = requests.Session()
 FEED_SESSION.headers.update(FEED_REQUEST_HEADERS)
 _CHALLENGED_FEEDS_LOGGED = set()
 _ARTICLE_DETAILS_CACHE = {}
+_GOOGLE_ARTICLE_URL_CACHE = {}
+_GOOGLE_URL_RE = re.compile(rb"https?://[^\x00-\x20\"'<>]+", re.IGNORECASE)
+
+
+def _protobuf_url_strings(data: bytes, depth: int = 0):
+    """Yield URL strings embedded in length-delimited Google News token fields."""
+    if depth > 5 or not data:
+        return
+    offset = 0
+
+    def read_varint(position):
+        value = shift = 0
+        while position < len(data) and shift <= 63:
+            byte = data[position]
+            position += 1
+            value |= (byte & 0x7f) << shift
+            if not byte & 0x80:
+                return value, position
+            shift += 7
+        raise ValueError("invalid protobuf varint")
+
+    while offset < len(data):
+        try:
+            tag, offset = read_varint(offset)
+            wire_type = tag & 7
+            if wire_type == 0:
+                _, offset = read_varint(offset)
+            elif wire_type == 1:
+                offset += 8
+            elif wire_type == 2:
+                length, offset = read_varint(offset)
+                end = offset + length
+                if end > len(data):
+                    return
+                value = data[offset:end]
+                offset = end
+                yield from _GOOGLE_URL_RE.findall(value)
+                yield from _protobuf_url_strings(value, depth + 1)
+            elif wire_type == 5:
+                offset += 4
+            else:
+                return
+        except (ValueError, RecursionError):
+            return
+
+
+def _decode_google_news_url(url: str, publisher_url: str = "") -> str | None:
+    """Decode a publisher URL embedded in a Google News base64 article token."""
+    path = urlsplit(url).path
+    match = re.search(r"/(?:articles|read)/([^/]+)", path)
+    if not match:
+        return None
+    token = match.group(1)
+    token += "=" * (-len(token) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(token)
+    except (ValueError, base64.binascii.Error):
+        return None
+
+    publisher_host = (urlsplit(publisher_url).hostname or "").lower()
+    for candidate_bytes in _GOOGLE_URL_RE.findall(decoded):
+        try:
+            candidate = candidate_bytes.decode("utf-8").rstrip(".,);")
+        except UnicodeDecodeError:
+            continue
+        host = (urlsplit(candidate).hostname or "").lower()
+        if host and host != "news.google.com" and _matches_publisher_host(
+                host, publisher_host):
+            return candidate
+
+    if publisher_host:
+        for candidate_bytes in _protobuf_url_strings(decoded):
+            try:
+                candidate = candidate_bytes.decode("utf-8").rstrip(".,);")
+            except UnicodeDecodeError:
+                continue
+            host = (urlsplit(candidate).hostname or "").lower()
+            if _matches_publisher_host(host, publisher_host):
+                return candidate
+    return None
+
+
+def _matches_publisher_host(host: str, publisher_host: str) -> bool:
+    if not host or host == "news.google.com" or host.endswith(".news.google.com"):
+        return False
+    if not publisher_host:
+        return True
+    return (host == publisher_host
+            or host.endswith("." + publisher_host)
+            or publisher_host.endswith("." + host))
+
+
+def resolve_article_url(url: str, publisher_url: str = "") -> str:
+    """Resolve Google News redirect links to the publisher article when possible."""
+    host = (urlsplit(url).hostname or "").lower()
+    if host != "news.google.com" and not host.endswith(".news.google.com"):
+        return url
+    cache_key = (url, publisher_url)
+    if cache_key in _GOOGLE_ARTICLE_URL_CACHE:
+        return _GOOGLE_ARTICLE_URL_CACHE[cache_key]
+
+    decoded = _decode_google_news_url(url, publisher_url)
+    if decoded:
+        _GOOGLE_ARTICLE_URL_CACHE[cache_key] = decoded
+        return decoded
+
+    publisher_host = (urlsplit(publisher_url).hostname or "").lower()
+    try:
+        response = requests.get(
+            url, headers=ARTICLE_REQUEST_HEADERS,
+            timeout=ARTICLE_REQUEST_TIMEOUT, allow_redirects=True)
+        resolved = response.url
+        resolved_host = (urlsplit(resolved).hostname or "").lower()
+        if _matches_publisher_host(resolved_host, publisher_host):
+            _GOOGLE_ARTICLE_URL_CACHE[cache_key] = resolved
+            return resolved
+        if response.ok and publisher_host:
+            soup = BeautifulSoup(response.text, "html.parser")
+            for tag in soup.find_all(["a", "link"]):
+                candidate = tag.get("href") or ""
+                candidate = urljoin(resolved, candidate)
+                candidate_host = (urlsplit(candidate).hostname or "").lower()
+                if _matches_publisher_host(candidate_host, publisher_host):
+                    _GOOGLE_ARTICLE_URL_CACHE[cache_key] = candidate
+                    return candidate
+    except requests.exceptions.RequestException as exc:
+        logger.debug("Could not resolve Google News link %s: %s", url, exc)
+
+    _GOOGLE_ARTICLE_URL_CACHE[cache_key] = url
+    return url
+
+
+def resolve_cluster_article_links(cluster: dict) -> None:
+    """Resolve Google News links on selected cluster members before enrichment."""
+    for member in cluster.get("members", []):
+        member["link"] = resolve_article_url(
+            member.get("link", ""), member.get("publisher_url", ""))
 
 
 def _entry_id(source_name: str, link: str, title: str) -> str:
@@ -154,19 +292,29 @@ def _fetch_article_details(
     return image_urls, context
 
 
-def fetch_article_context(url: str) -> str | None:
+def fetch_article_context(url: str, publisher_url: str = "") -> str | None:
     """Fetch the first three substantive paragraphs from an article page."""
-    return _fetch_article_details(url)[1]
+    return _fetch_article_details(resolve_article_url(url, publisher_url))[1]
 
 
 def _extract_rss_media(entry):
     """Returns (media_url, media_type, photo_candidates).
 
-    Direct RSS media is collected before attempting article-page scraping, so
-    feeds with their own image still work when the publisher blocks HTML fetches.
+    Collects feed-provided media without scraping every article during ingestion.
+    Article metadata is fetched later for selected stories during enrichment.
     """
     image_urls = []
     video_url = None
+
+    def add_image(url, attributes, allow_thumbnail=False):
+        if (url and _usable_image(url, allow_thumbnail=allow_thumbnail)
+                and url not in image_urls):
+            try:
+                width = int(attributes.get("width", 0) or 0)
+                height = int(attributes.get("height", 0) or 0)
+            except (TypeError, ValueError):
+                width = height = 0
+            image_urls.append((url, width, height))
 
     # media:content can be a list with several renditions (e.g. a poster
     # image AND a video); scan all of them, not just the first, so a video
@@ -180,14 +328,12 @@ def _extract_rss_media(entry):
             if _looks_like_video(url, mc.get("type", "")):
                 video_url = video_url or url
             continue
-        if (not _looks_like_video(url, mc.get("type", ""))
-                and _usable_image(url) and url not in image_urls):
-            image_urls.append(url)
+        if not _looks_like_video(url, mc.get("type", "")):
+            add_image(url, mc, allow_thumbnail=True)
 
     for thumbnail in getattr(entry, "media_thumbnail", None) or []:
         url = thumbnail.get("url")
-        if url and _usable_image(url, allow_thumbnail=True) and url not in image_urls:
-            image_urls.append(url)
+        add_image(url, thumbnail, allow_thumbnail=True)
 
     for enc in getattr(entry, "enclosures", None) or []:
         url = enc.get("href") or enc.get("url")
@@ -198,8 +344,8 @@ def _extract_rss_media(entry):
             video_url = video_url or url
             continue
         if ((enc_type.startswith("image") or _looks_like_image_url(url))
-                and _usable_image(url) and url not in image_urls):
-            image_urls.append(url)
+                and _usable_image(url)):
+            add_image(url, enc, allow_thumbnail=True)
 
     content_values = []
     summary = getattr(entry, "summary", None)
@@ -214,17 +360,14 @@ def _extract_rss_media(entry):
         soup = BeautifulSoup(value, "html.parser")
         for image in soup.find_all("img", src=True):
             url = urljoin(article_url, image["src"].strip())
-            if _usable_image(url) and url not in image_urls:
-                image_urls.append(url)
+            add_image(url, image.attrs)
 
-    og_images, _ = _fetch_article_details(
-        article_url)
     candidates = []
-    for url in image_urls:
-        candidates.append({"url": url, "kind": "rss"})
-    for url in og_images:
-        if url not in image_urls:
-            candidates.append({"url": url, "kind": "og"})
+    for url, width, height in image_urls:
+        candidate = {"url": url, "kind": "rss"}
+        if width and height:
+            candidate.update(width=width, height=height)
+        candidates.append(candidate)
 
     if video_url:
         return video_url, "video", candidates
@@ -256,8 +399,13 @@ def fetch_all_entries():
     all_entries = []
     for src in SOURCES:
         try:
-            response = FEED_SESSION.get(
-                src["url"], timeout=FEED_REQUEST_TIMEOUT)
+            response = FEED_SESSION.get(src["url"], timeout=FEED_REQUEST_TIMEOUT)
+            if getattr(response, "status_code", None) == 415:
+                logger.info("Feed %s rejected XML Accept header; retrying with */*",
+                            src["name"])
+                response = FEED_SESSION.get(
+                    src["url"], headers={"Accept": "*/*"},
+                    timeout=FEED_REQUEST_TIMEOUT)
             raw_bytes = response.content
             if raw_bytes.lstrip(b"\xef\xbb\xbf \t\r\n").lower().startswith(
                     (b"<!doctype html", b"<html")):
@@ -284,6 +432,10 @@ def fetch_all_entries():
                 if not title or not link:
                     continue
                 media_url, media_type, photo_candidates = _extract_rss_media(entry)
+                source = getattr(entry, "source", {}) or {}
+                publisher_url = ""
+                if hasattr(source, "get"):
+                    publisher_url = source.get("href") or source.get("url") or ""
                 all_entries.append({
                     "entry_id": _entry_id(src["name"], link, title),
                     "title": title,
@@ -294,6 +446,7 @@ def fetch_all_entries():
                     "media_url": media_url,
                     "media_type": media_type,
                     "photo_candidates": photo_candidates,
+                    "publisher_url": publisher_url,
                 })
         except Exception as e:
             logger.warning("Failed to fetch %s: %s", src["name"], e)

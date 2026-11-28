@@ -26,7 +26,7 @@ SOURCES = [
     {"name": "Sky News World", "url": "https://feeds.skynews.com/feeds/rss/world.xml", "lean": "wire"},
 
     # --- Left-leaning ---
-    {"name": "The Guardian World", "url": "https://www.theguardian.com/world/rss", "lean": "left"},
+    {"name": "The Guardian World", "url": "https://news.google.com/rss/search?q=site%3Atheguardian.com%2Fworld+when%3A1d&hl=en-US&gl=US&ceid=US:en", "lean": "left"},
     {"name": "NYT World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "lean": "left"},
     {"name": "NPR World", "url": "https://feeds.npr.org/1004/rss.xml", "lean": "left"},
 
@@ -37,7 +37,7 @@ SOURCES = [
 
     # --- Middle East depth (not treated as neutral wire - needs a second source to confirm) ---
     {"name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "lean": "middle_east"},
-    {"name": "Times of Israel", "url": "https://www.timesofisrael.com/feed/", "lean": "il_media"},
+    {"name": "Times of Israel", "url": "https://news.google.com/rss/search?q=site%3Atimesofisrael.com+when%3A1d&hl=en-US&gl=US&ceid=US:en", "lean": "il_media"},
     {"name": "Jerusalem Post", "url": "https://www.jpost.com/rss/rssfeedsheadlines.aspx", "lean": "il_jpost"},
 
     # --- Lebanon. The specific Lebanese TV networks (LBCI/MTV/Al Jadeed) and
@@ -58,13 +58,12 @@ SOURCES = [
     # of Resistance activity available). Not auto-confirming - still needs
     # a second, different-lean source, consistent with not auto-trusting
     # any single non-major-wire source regardless of reputation.
-    {"name": "Critical Threats Project (AEI)", "url": "https://www.criticalthreats.org/feed", "lean": "analysis_ctp"},
-    {"name": "Predictive History", "url": "https://predictivehistory.substack.com/feed", "lean": "analysis_predictivehistory"},
+    {"name": "Critical Threats Project (AEI)", "url": "https://news.google.com/rss/search?q=site%3Acriticalthreats.org+when%3A1d&hl=en-US&gl=US&ceid=US:en", "lean": "analysis_ctp"},
 
     # --- Finance / markets / crypto (auto-confirming, like wire - see FINANCE_WIRE_LEANS) ---
     {"name": "BBC Business", "url": "https://feeds.bbci.co.uk/news/business/rss.xml", "lean": "finance_wire"},
     {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "lean": "finance_wire"},
-    {"name": "Kitco News", "url": "https://www.kitco.com/news/category/mining/rss", "lean": "finance_wire"},
+    {"name": "Kitco News", "url": "https://news.google.com/rss/search?q=site%3Akitco.com%2Fnews+when%3A1d&hl=en-US&gl=US&ceid=US:en", "lean": "finance_wire"},
     {"name": "MarketWatch", "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories", "lean": "finance_wire"},
     {"name": "CNBC", "url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "lean": "finance_wire"},
     {"name": "CNBC Economy", "url": "https://www.cnbc.com/id/20910258/device/rss/rss.html", "lean": "finance_wire"},

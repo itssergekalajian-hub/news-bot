@@ -24,6 +24,8 @@ from urllib.parse import urlsplit
 import requests
 from bs4 import BeautifulSoup
 
+from fetcher import resolve_article_url
+
 logger = logging.getLogger("news_bot.media_upgrade")
 
 HEADERS = {
@@ -128,7 +130,11 @@ def upgrade_cluster_media(cluster: dict):
     existing_image = existing_media if existing_type == "photo" else None
 
     members_sorted = sorted(cluster["members"], key=lambda m: m["published"], reverse=True)
-    links_to_try = [m["link"] for m in members_sorted[:MAX_LINKS_TO_TRY]]
+    links_to_try = [
+        resolve_article_url(
+            member["link"], member.get("publisher_url", ""))
+        for member in members_sorted[:MAX_LINKS_TO_TRY]
+    ]
 
     best_image = None
     for link in links_to_try:
